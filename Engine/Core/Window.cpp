@@ -55,6 +55,9 @@ namespace baek
 
 	LRESULT Window::HandleMessage(UINT msg, WPARAM wp, LPARAM lp)
 	{
+		if(mHook && mHook(mHwnd, msg, wp, lp))
+			return true;
+
 		switch (msg)
 		{
 		case WM_SIZE:

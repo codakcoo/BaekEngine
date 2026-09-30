@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <Windows.h>
 #include <cstdint>
+#include <functional>
 
 namespace baek
 {
@@ -16,6 +17,8 @@ namespace baek
 		bool IsMinimized() const		{ return mMinimized; }
 		bool ConsumeResize()			{ bool r = mResized; mResized = false; return r; }
 
+		using MessageHook = std::function<bool(HWND, UINT, WPARAM, LPARAM)>;			// true = 처리됨
+		void SetMessageHook(MessageHook hook) { mHook = std::move(hook); }
 
 	private:
 		static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -25,5 +28,7 @@ namespace baek
 		uint32_t mWidth = 0, mHeight = 0;
 		bool mResized = false;
 		bool mMinimized = false;
+
+		MessageHook mHook;
 	};
 }

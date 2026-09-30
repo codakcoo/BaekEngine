@@ -19,6 +19,7 @@ if(MSVC)
 endif()
 
 # 하위 프로젝트를 포함합니다.
+add_subdirectory("ThirdParty")
 add_subdirectory("Engine")
 add_subdirectory("Editor")
 

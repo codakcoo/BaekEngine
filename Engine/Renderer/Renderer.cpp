@@ -1,4 +1,4 @@
-#include "Renderer\Renderer.h"
+ï»¿#include "Renderer\Renderer.h"
 #include "d3dx12.h"
 
 namespace baek
@@ -12,6 +12,7 @@ namespace baek
 		mDevice.Init(false);
 #endif
 		mSwapChain.Init(mDevice, window.Handle(), window.Width(), window.Height());
+		mSrvHeap.Init(mDevice.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1024, true);
 
 		for (auto& a : mAllocators)
 		{
@@ -26,39 +27,31 @@ namespace baek
 		mDevice.Shutdown();
 	}
 
-	void Renderer::Render(const float clearColor[4])
+	void Renderer::BeginFrame(const float clearColor[4])
 	{
-		static uint64_t frame = 0;
-		if ((++frame % 60) == 0)
-		{
-			char buf[64];
-			sprintf_s(buf, "[Render] frame %llu\n", frame);
-			OutputDebugStringA(buf);
-		}
-
-		// ¸®»çÀÌÁî: ÁøÇà ÁßÀÎ GPU ÀÛ¾÷ ÀüºÎ ³¡³½ µÚ ¹öÆÛ Àç»ý¼º
 		if (mWindow->ConsumeResize())
 		{
 			mDevice.Flush();
 			mSwapChain.Resize(mDevice, mWindow->Width(), mWindow->Height());
 		}
 
-		// ÀÌ ½½·ÔÀÇ ÀÌÀü ÇÁ·¹ÀÓÀÌ ³¡³µ´ÂÁö È®ÀÎ (±âÁ¸ FrameResource ´ë±â¿Í °°Àº ¿ªÇÒ)
 		mDevice.WaitForValue(mFrameFence[mFrameIndex]);
 
 		auto* alloc = mAllocators[mFrameIndex].Get();
 		ThrowIfFailed(alloc->Reset());
 		ThrowIfFailed(mCmd->Reset(alloc, nullptr));
 
-		ID3D12Resource* back = mSwapChain.CurrentBuffer();
-		auto toRT = CD3DX12_RESOURCE_BARRIER::Transition(back, 
+		auto toRT = CD3DX12_RESOURCE_BARRIER::Transition(mSwapChain.CurrentBuffer(),
 			D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 		mCmd->ResourceBarrier(1, &toRT);
 
 		auto rtv = mSwapChain.CurrentRtv();
 		mCmd->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
-
-		auto toPresent = CD3DX12_RESOURCE_BARRIER::Transition(back,
+		mCmd->OMSetRenderTargets(1, &rtv, FALSE, nullptr);						// ImGuiê°€ ì—¬ê¸°ì— ê·¸ë¦¼
+	}
+	void Renderer::EndFrame()
+	{
+		auto toPresent = CD3DX12_RESOURCE_BARRIER::Transition(mSwapChain.CurrentBuffer(),
 			D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 		mCmd->ResourceBarrier(1, &toPresent);
 
