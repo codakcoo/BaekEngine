@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include "Core/Window.h"
 #include "RHI/Device.h"
 #include "RHI/SwapChain.h"
@@ -9,24 +9,28 @@ namespace baek
 	class Renderer
 	{
 	public:
-		static constexpr uint32_t FrameCount = 2;						// CPU°¡ ¾Õ¼­°¥ ¼ö ÀÖ´Â ÇÁ·¹ÀÓ ¼ö
+		static constexpr uint32_t FrameCount = 2;						// CPUê°€ ì•ì„œê°ˆ ìˆ˜ ìˆëŠ” í”„ë ˆì„ ìˆ˜
 
 		void Init(Window& window);
 		void Shutdown();
 		void WaitIdle() { mDevice.Flush(); }
+		void BindBackBuffer();
 
-		void BeginFrame(const float clearColor[4]);						// ´ë±â, ¸®¼Â, RT ÀüÀÌ, Å¬¸®¾î, RT ¹ÙÀÎµù
-		void EndFrame();												// Present ÀüÀÌ, ½ÇÇà, Present
+
+		void BeginFrame(const float clearColor[4]);						// ëŒ€ê¸°, ë¦¬ì…‹, RT ì „ì´, í´ë¦¬ì–´, RT ë°”ì¸ë”©
+		void EndFrame();												// Present ì „ì´, ì‹¤í–‰, Present
 
 		Device& GetDevice() { return mDevice; }
 		DescriptorHeap& SrvHeap() { return mSrvHeap; }
+		DescriptorHeap& RtvHeap() { return mRtvHeap; }
 		ID3D12GraphicsCommandList* CommandList() const { return mCmd.Get(); }
 
 	private:
 		Window* mWindow = nullptr;
 		Device mDevice;
 		SwapChain mSwapChain;
-		DescriptorHeap mSrvHeap;										// shader-visible CBV/SRV/UAV (¿£Áø ÀüÃ¼ °ø¿ë)
+		DescriptorHeap mSrvHeap;										// shader-visible CBV/SRV/UAV (ì—”ì§„ ì „ì²´ ê³µìš©)
+		DescriptorHeap mRtvHeap;										// ì˜¤í”„ìŠ¤í¬ë¦° RTìš© (non-shader-visible)
 
 		ComPtr<ID3D12CommandAllocator>			mAllocators[FrameCount];
 		uint64_t								mFrameFence[FrameCount] = {};

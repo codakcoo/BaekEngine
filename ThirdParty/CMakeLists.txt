@@ -1,4 +1,8 @@
-﻿set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
+﻿if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui.cpp)
+    message(FATAL_ERROR "ImGui directory not found. Please ensure that the ImGui library is present in the ThirdParty directory.")
+endif()
+
+set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 
 add_library(imgui STATIC
     ${IMGUI_DIR}/imgui.cpp
