@@ -23,6 +23,7 @@ namespace baek
 		Device& GetDevice() { return mDevice; }
 		DescriptorHeap& SrvHeap() { return mSrvHeap; }
 		DescriptorHeap& RtvHeap() { return mRtvHeap; }
+		DescriptorHeap& DsvHeap() { return mDsvHeap; }
 		ID3D12GraphicsCommandList* CommandList() const { return mCmd.Get(); }
 
 	private:
@@ -31,6 +32,7 @@ namespace baek
 		SwapChain mSwapChain;
 		DescriptorHeap mSrvHeap;										// shader-visible CBV/SRV/UAV (엔진 전체 공용)
 		DescriptorHeap mRtvHeap;										// 오프스크린 RT용 (non-shader-visible)
+		DescriptorHeap mDsvHeap;										
 
 		ComPtr<ID3D12CommandAllocator>			mAllocators[FrameCount];
 		uint64_t								mFrameFence[FrameCount] = {};

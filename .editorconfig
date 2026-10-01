@@ -1,6 +1,7 @@
 root = true
 
-[*.{h,hpp,cpp,hlsl,txt,json}]
+[*.{h,hpp,cpp,txt,json}]
 charset = utf-8-bom
-end_of_line = crlf
-insert_final_newline = true
+
+[*.hlsl]
+charset = utf-8

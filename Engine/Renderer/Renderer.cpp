@@ -14,6 +14,7 @@ namespace baek
 		mSwapChain.Init(mDevice, window.Handle(), window.Width(), window.Height());
 		mSrvHeap.Init(mDevice.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1024, true);
 		mRtvHeap.Init(mDevice.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 64, false);
+		mDsvHeap.Init(mDevice.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 16, false);
 
 		for (auto& a : mAllocators)
 		{
