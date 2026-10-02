@@ -1,5 +1,4 @@
 ﻿#include "Renderer\Renderer.h"
-#include "d3dx12.h"
 
 namespace baek
 {

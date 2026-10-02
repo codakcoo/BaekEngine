@@ -59,8 +59,8 @@ namespace baek
 
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
 		pso.pRootSignature = mRootSig.Get();
-		pso.VS = { vs->GetBufferPointer(), vs->GetBufferSize() };
-		pso.PS = { ps->GetBufferPointer(), ps->GetBufferSize() };
+		pso.VS = CD3DX12_SHADER_BYTECODE(vs.Get());
+		pso.PS = CD3DX12_SHADER_BYTECODE(ps.Get());
 		pso.InputLayout = { layout, _countof(layout) };
 		pso.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 		pso.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);

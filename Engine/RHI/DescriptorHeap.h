@@ -1,6 +1,5 @@
-#pragma once
+ï»¿#pragma once
 #include "RHI/DxUtil.h"
-#include <d3d12.h>
 #include <vector>
 #include <cstdint>
 
@@ -14,7 +13,7 @@ namespace baek
 		bool IsValid() const { return index != UINT32_MAX; }
 	};
 
-	// °íÁ¤ Å©±â Èü + free list. (GPU°¡ ¾ÆÁ÷ ¾²´Â ½½·ÔÀÇ Áö¿¬ ÇØÁ¦´Â ³ªÁß¿¡)
+	// ê³ ì • í¬ê¸° í™ + free list. (GPUê°€ ì•„ì§ ì“°ëŠ” ìŠ¬ë¡¯ì˜ ì§€ì—° í•´ì œëŠ” ë‚˜ì¤‘ì—)
 	class DescriptorHeap
 	{
 	public:
@@ -22,7 +21,7 @@ namespace baek
 
 		DescriptorHandle	Allocate();
 		void				Free(const DescriptorHandle& h) { FreeIndex(h.index); }
-		void				Free(D3D12_CPU_DESCRIPTOR_HANDLE cpu);					// ImGui Äİ¹é¿ë
+		void				Free(D3D12_CPU_DESCRIPTOR_HANDLE cpu);					// ImGui ì½œë°±ìš©
 		DescriptorHandle	At(uint32_t index) const;
 
 		ID3D12DescriptorHeap* Get() const { return mHeap.Get(); }

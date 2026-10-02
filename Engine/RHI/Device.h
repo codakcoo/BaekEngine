@@ -1,7 +1,5 @@
 ﻿#pragma once
 #include "RHI/DxUtil.h"
-#include <d3d12.h>
-#include <dxgi1_6.h>
 #include <cstdint>
 
 namespace baek

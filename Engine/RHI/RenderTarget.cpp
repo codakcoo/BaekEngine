@@ -1,5 +1,4 @@
 ﻿#include "RHI/RenderTarget.h"
-#include "d3dx12.h"				// 다른 파일에서 쓰는 include 경로와 맞출 것
 
 namespace baek
 {

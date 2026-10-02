@@ -1,6 +1,9 @@
-#pragma once
-#include <Windows.h>
+﻿#pragma once
+#include <directx/d3d12.h>				// 서브 모듈 것 (반드시 맨 먼저)
+#include <directx/d3dx12.h>				
+#include <dxgi1_6.h>					// DXGI는 그대로 Window SDK 것
 #include <wrl/client.h>
+#include <Windows.h>
 #include <stdexcept>
 #include <cstdio>
 

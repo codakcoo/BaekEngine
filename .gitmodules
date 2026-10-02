@@ -2,3 +2,6 @@
 	path = ThirdParty/imgui
 	url = https://github.com/ocornut/imgui.git
 	branch = docking
+[submodule "ThirdParty/DirectX-Headers"]
+	path = ThirdParty/DirectX-Headers
+	url = https://github.com/microsoft/DirectX-Headers.git

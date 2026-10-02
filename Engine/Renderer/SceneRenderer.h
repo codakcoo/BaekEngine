@@ -1,6 +1,5 @@
 ﻿#pragma once
 #include "RHI/DxUtil.h"
-#include "d3dx12.h"
 
 namespace baek
 {
