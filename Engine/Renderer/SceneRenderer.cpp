@@ -53,8 +53,8 @@ namespace baek
 
 		D3D12_INPUT_ELEMENT_DESC layout[] = 
 		{
-			{ "POSITION",	0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-			{ "COLOR",		0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, color), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+			{ "POSITION",	0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+			{ "COLOR",		0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, color), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
 		};
 
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
@@ -97,14 +97,12 @@ namespace baek
 		mIbv = { mIB->GetGPUVirtualAddress(), sizeof(idx), DXGI_FORMAT_R16_UINT };
 	}
 	
-	void SceneRenderer::Render(ID3D12GraphicsCommandList* cmd, float aspect, float time)
+	void SceneRenderer::Render(ID3D12GraphicsCommandList* cmd, const DirectX::XMMATRIX& viewProj)
 	{
-		XMMATRIX world = XMMatrixRotationY(time) * XMMatrixRotationX(time * 0.5f);
-		XMMATRIX view = XMMatrixLookAtLH(XMVectorSet(0, 2, -5, 1), XMVectorZero(), XMVectorSet(0, 1, 0, 0));
-		XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV4, aspect, 0.1f, 100.0f);
+		XMMATRIX world = XMMatrixIdentity();
 
 		XMFLOAT4X4 mvp;
-		XMStoreFloat4x4(&mvp, XMMatrixTranspose(world * view * proj));
+		XMStoreFloat4x4(&mvp, XMMatrixTranspose(world * viewProj));
 
 		cmd->SetGraphicsRootSignature(mRootSig.Get());
 		cmd->SetPipelineState(mPso.Get());

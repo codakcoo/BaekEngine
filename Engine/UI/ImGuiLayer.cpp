@@ -20,6 +20,7 @@ namespace baek
 		ImGuiIO& io = ImGui::GetIO();
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+		io.ConfigWindowsMoveFromTitleBarOnly = true;
 		ImGui::StyleColorsDark();
 
 		ImGui_ImplWin32_Init(window.Handle());

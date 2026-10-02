@@ -3,16 +3,51 @@
 #include "Renderer/SceneRenderer.h"
 #include "RHI/RenderTarget.h"
 #include "UI/ImGuiLayer.h"
+#include "Scene/Camera.h"
 #include "imgui.h"
 #include "imgui_internal.h"
+
 #include <exception>
 #include <algorithm>
-#include <chrono>
 
 baek::RenderTarget viewportRT;
 UINT vpReqW = 1200, vpReqH = 720;       // UI가 요청한 크기
 
-static void DrawEditorUI(bool& showDemo)
+static void UpdateCameraInput(baek::Camera& cam, bool hovered)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    static bool flying = false, orbiting = false;
+
+    // 시작은 Viewport 위에서만, 유지는 버튼을 누르고 있는 동안 (커서가 패널 밖으로 나가도 계속)
+    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))                   flying = true;
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Right))                                flying =false;
+    if (hovered && io.KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left))       orbiting = true;
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))                                 orbiting = false;
+
+    const float rot = 0.004f;           // rad / pixel
+    const float dYaw  = io.MouseDelta.x * rot;
+    const float dPitch = -io.MouseDelta.y * rot;
+
+    if (flying)
+    {
+        cam.Rotate(dYaw, dPitch);
+
+        const float speed = 5.0f * (io.KeyShift ? 3.0f : 1.0f) * io.DeltaTime;
+        const float f = (float)ImGui::IsKeyDown(ImGuiKey_W) - (float)ImGui::IsKeyDown(ImGuiKey_S);
+        const float r = (float)ImGui::IsKeyDown(ImGuiKey_D) - (float)ImGui::IsKeyDown(ImGuiKey_A);
+        const float u = (float)ImGui::IsKeyDown(ImGuiKey_E) - (float)ImGui::IsKeyDown(ImGuiKey_Q);
+        cam.MoveLocal(r * speed, u * speed, f * speed);
+    }
+    else if (orbiting)
+    {
+        cam.Orbit(dYaw, dPitch);
+    }
+    
+    if (hovered && io.MouseWheel != 0.0f)
+        cam.Zoom(io.MouseWheel * 0.5f);
+}
+
+static void DrawEditorUI(bool& showDemo, baek::Camera& camera)
 {
 	ImGuiID dockId = ImGui::GetID("MainDockSpace");
 
@@ -34,10 +69,13 @@ static void DrawEditorUI(bool& showDemo)
     // 메인 창 전체를 도킹 영역으로 (가운데는 비워서 씬이 보이게)
     ImGui::DockSpaceOverViewport(dockId, ImGui::GetMainViewport());
 
+    const auto& p = camera.Position();
+
     ImGui::Begin("Stats");
     const ImGuiIO& io = ImGui::GetIO();
     ImGui::Text("FPS : %.1f", io.Framerate);
     ImGui::Text("Frame : %.3f", 1000.0f / io.Framerate);
+    ImGui::Text("Cam : %.2f, %.2f, %.2f", p.x, p.y, p.z);
     ImGui::Separator();
     ImGui::Checkbox("ImGui Demo", &showDemo);
     ImGui::End();
@@ -48,6 +86,7 @@ static void DrawEditorUI(bool& showDemo)
 	vpReqW = (UINT)std::max(1.0f, avail.x);
 	vpReqH = (UINT)std::max(1.0f, avail.y);
 	ImGui::Image((ImTextureID)(viewportRT.Srv().ptr), avail);
+    UpdateCameraInput(camera, ImGui::IsWindowHovered());
 	ImGui::End();
 	ImGui::PopStyleVar();
         
@@ -79,10 +118,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         baek::SceneRenderer scene;
         scene.Init(renderer.GetDevice().Get(), DXGI_FORMAT_R8G8B8A8_UNORM, baek::RenderTarget::DepthFormat);
 
-        const auto startTime = std::chrono::steady_clock::now();
 
         const float clear[4] = { 0.10f, 0.10f, 0.15f, 1.0f };
         bool showDemo = false;
+        baek::Camera camera;
+        camera.SetLens(DirectX::XM_PIDIV4, 1280.0f / 720.0f, 0.1f, 1000.0f);
 
         while (window.PumpMessages())
         {
@@ -93,16 +133,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                 viewportRT.Resize(vpReqW, vpReqH);          // 크기 변경
 			}
 
-            float t = std::chrono::duration<float>(std::chrono::steady_clock::now() - startTime).count();
-
             imgui.BeginFrame();
-            DrawEditorUI(showDemo);
+            DrawEditorUI(showDemo, camera);
 
             renderer.BeginFrame(clear);
 			auto* cmd = renderer.CommandList();
             
+            camera.SetAspect((float)viewportRT.Width() / (float)viewportRT.Height());
+
 			viewportRT.Begin(cmd);
-            scene.Render(cmd, (float)viewportRT.Width() / (float)viewportRT.Height(), t);
+            scene.Render(cmd, camera.ViewProj());
 			viewportRT.End(cmd);
 
 			renderer.BindBackBuffer();                 // 스왑체인 RT로 전환

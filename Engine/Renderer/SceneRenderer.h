@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "RHI/DxUtil.h"
+#include <DirectXMath.h>
 
 namespace baek
 {
@@ -7,7 +8,7 @@ namespace baek
 	{
 	public:
 		void Init(ID3D12Device* device, DXGI_FORMAT rtvFormat, DXGI_FORMAT dsvFormat);
-		void Render(ID3D12GraphicsCommandList* cmd, float aspect, float time);
+		void Render(ID3D12GraphicsCommandList* cmd, const DirectX::XMMATRIX& viewProj);
 		void Shutdown();
 		
 	private:

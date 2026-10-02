@@ -1,6 +1,6 @@
 ﻿file(GLOB_RECURSE ENGINE_SRC CONFIGURE_DEPENDS *.h *.cpp)
 
-add_library(Engine STATIC ${ENGINE_SRC} "RHI/DescriptorHeap.h" "RHI/DescriptorHeap.cpp" "UI/ImGuiLayer.h" "UI/ImGuiLayer.cpp" "RHI/RenderTarget.h" "RHI/RenderTarget.cpp" "Renderer/SceneRenderer.cpp")
+add_library(Engine STATIC ${ENGINE_SRC} "RHI/DescriptorHeap.h" "RHI/DescriptorHeap.cpp" "UI/ImGuiLayer.h" "UI/ImGuiLayer.cpp" "RHI/RenderTarget.h" "RHI/RenderTarget.cpp" "Renderer/SceneRenderer.cpp" "Scene/Camera.cpp")
 target_include_directories(Engine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/ThirdParty)
