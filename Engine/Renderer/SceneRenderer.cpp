@@ -1,5 +1,7 @@
 ﻿#include "Renderer/SceneRenderer.h"
 #include "RHI/Shader.h"
+#include "Renderer/Mesh.h"
+#include "Scene/Scene.h"
 #include <DirectXMath.h>
 #include <vector>
 
@@ -8,32 +10,6 @@ using namespace DirectX;
 
 namespace baek
 {
-	namespace
-	{
-		struct Vertex
-		{
-			XMFLOAT3 pos;
-			XMFLOAT3 color;
-		};
-
-		// 임시: 작은 정점 메시라 UPLOAD 힙에 직접 둔다 (에셋 시스템에서 DEFAULT 힙 + 복사로 교체)
-		ComPtr<ID3D12Resource> CreateUploadBuffer(ID3D12Device* d, const void* data, UINT64 size)
-		{
-			CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_UPLOAD);
-			auto desc = CD3DX12_RESOURCE_DESC::Buffer(size);
-			ComPtr<ID3D12Resource> buf;
-			ThrowIfFailed(d->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, 
-				D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&buf)));
-
-			void* p = nullptr;
-			CD3DX12_RANGE noRead(0, 0);
-			ThrowIfFailed(buf->Map(0, &noRead, &p));
-			memcpy(p, data, size);
-			buf->Unmap(0, nullptr);
-			return buf;
-		}
-	}
-
 	void SceneRenderer::Init(ID3D12Device* device, DXGI_FORMAT rtvFormat, DXGI_FORMAT dsvFormat)
 	{
 		// --- Root Signature: b0 = MVP (root constants 16개) ---
@@ -78,29 +54,6 @@ namespace baek
 		linePSO.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
 		ThrowIfFailed(device->CreateGraphicsPipelineState(&linePSO, IID_PPV_ARGS(&mLinePSO)));
 
-		// --- Cube geometry ---
-		const Vertex verts[] = 
-		{
-			{ {-1,-1,-1}, {1,1,1} }, { {-1, 1,-1}, {0,0,0} },
-			{ { 1, 1,-1}, {1,0,0} }, { { 1,-1,-1}, {0,1,0} },
-			{ {-1,-1, 1}, {0,0,1} }, { {-1, 1, 1}, {1,1,0} },
-			{ { 1, 1, 1}, {0,1,1} }, { { 1,-1, 1}, {1,0,1} },
-		};
-		const uint16_t idx[] =
-		{
-			0,1,2, 0,2,3,   4,6,5, 4,7,6,   4,5,1, 4,1,0,
-			3,2,6, 3,6,7,   1,5,6, 1,6,2,   4,0,3, 4,3,7,
-		};
-		mIndexCount = _countof(idx);
-
-		mVB = CreateUploadBuffer(device, verts, sizeof(verts));
-		mIB = CreateUploadBuffer(device, idx, sizeof(idx));
-		mVB->SetName(L"CubeVB");
-		mIB->SetName(L"CubeIB");
-
-		mVbv = { mVB->GetGPUVirtualAddress(), sizeof(verts), sizeof(Vertex) };
-		mIbv = { mIB->GetGPUVirtualAddress(), sizeof(idx), DXGI_FORMAT_R16_UINT };
-
 		// --- Grid geometry (XZ plane, 1m spacing, -20...20) ---
 		const int half = 20;
 		const XMFLOAT3 gray = { 0.35f, 0.35f, 0.35f };
@@ -129,7 +82,7 @@ namespace baek
 		mGridVbv = { mGridVB->GetGPUVirtualAddress(), gridByte, sizeof(Vertex) };
 	}
 	
-	void SceneRenderer::Render(ID3D12GraphicsCommandList* cmd, const DirectX::XMMATRIX& viewProj)
+	void SceneRenderer::Render(ID3D12GraphicsCommandList* cmd, const DirectX::XMMATRIX& viewProj, const Scene& scene)
 	{
 		cmd->SetGraphicsRootSignature(mRootSig.Get());
 
@@ -147,18 +100,19 @@ namespace baek
 		cmd->IASetVertexBuffers(0, 1, &mGridVbv);
 		cmd->DrawInstanced(mGridVertexCount, 1, 0, 0);
 
-		// --- Cube (바닥 위에 올려놓기: y + 1) ---
-		setMvp(XMMatrixTranslation(0.0f, 1.0f, 0.0f));
+		// --- Entities ---
 		cmd->SetPipelineState(mPso.Get());
-		cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		cmd->IASetVertexBuffers(0, 1, &mVbv);
-		cmd->IASetIndexBuffer(&mIbv);
-		cmd->DrawIndexedInstanced(mIndexCount, 1, 0, 0, 0);
+		for (const Entity& e : scene.Entities())
+		{
+			if (!e.visible || !e.mesh) continue;
+			setMvp(e.transform.Matrix());
+			e.mesh->Draw(cmd);
+		}
 	}
 	
 	
 	void SceneRenderer::Shutdown()
 	{
-		mVB.Reset(); mIB.Reset(); mPso.Reset(); mLinePSO.Reset(); mRootSig.Reset();
+		mPso.Reset(); mLinePSO.Reset(); mRootSig.Reset();
 	}
 }

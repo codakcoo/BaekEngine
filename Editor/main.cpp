@@ -4,6 +4,8 @@
 #include "RHI/RenderTarget.h"
 #include "UI/ImGuiLayer.h"
 #include "Scene/Camera.h"
+#include "Renderer/Mesh.h"
+#include "Scene/Scene.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 
@@ -115,9 +117,30 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             DXGI_FORMAT_R8G8B8A8_UNORM, sceneClear);
 		viewportRT.Resize(vpReqW, vpReqH);
 
-        baek::SceneRenderer scene;
-        scene.Init(renderer.GetDevice().Get(), DXGI_FORMAT_R8G8B8A8_UNORM, baek::RenderTarget::DepthFormat);
+        baek::SceneRenderer sceneRenderer;
+        sceneRenderer.Init(renderer.GetDevice().Get(), DXGI_FORMAT_R8G8B8A8_UNORM, baek::RenderTarget::DepthFormat);
 
+        baek::Mesh cubeMesh = baek::Mesh::CreateCube(renderer.GetDevice().Get());
+
+        baek::Scene scene;
+        {
+            auto& e = scene.Create("Cube A");
+            e.mesh = &cubeMesh;
+            e.transform.position = { 0.0f, 0.5f, 0.0f };
+        }
+        {
+            auto& e = scene.Create("Cube B");
+            e.mesh = &cubeMesh;
+            e.transform.position = { 3.0f, 1.0f, 2.0f };
+            e.transform.rotation = { 0.0f, 30.0f, 0.0f };
+            e.transform.scale = { 2.0f, 2.0f, 2.0f };
+        }
+        {
+            auto& e = scene.Create("Cube C");
+            e.mesh = &cubeMesh;
+            e.transform.position = { -3.0f, 0.25f, -1.0f };
+            e.transform.scale = { 0.5f, 0.5f, 0.5f };
+        }
 
         const float clear[4] = { 0.10f, 0.10f, 0.15f, 1.0f };
         bool showDemo = false;
@@ -142,7 +165,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             camera.SetAspect((float)viewportRT.Width() / (float)viewportRT.Height());
 
 			viewportRT.Begin(cmd);
-            scene.Render(cmd, camera.ViewProj());
+            sceneRenderer.Render(cmd, camera.ViewProj(), scene);
 			viewportRT.End(cmd);
 
 			renderer.BindBackBuffer();                 // 스왑체인 RT로 전환
@@ -151,7 +174,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         }
 
         renderer.WaitIdle();                        // GPU가 ImGui 리소스를 다 쓴 뒤에
-        scene.Shutdown();
+        cubeMesh.Shutdown();
+        sceneRenderer.Shutdown();
         viewportRT.Shutdown();
         imgui.Shutdown();                           // ImGui 해제
         renderer.Shutdown();
