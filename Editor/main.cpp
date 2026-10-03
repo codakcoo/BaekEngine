@@ -110,7 +110,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         baek::ImGuiLayer imgui;
         imgui.Init(window, renderer);
 
-		const float sceneClear[4] = { 0.25f, 0.15f, 0.10f, 1.0f };          // 백버퍼와 구분되는 색
+		const float sceneClear[4] = { 0.12f, 0.12f, 0.13f, 1.0f };          // 백버퍼와 구분되는 색
 		viewportRT.Init(renderer.GetDevice().Get(), &renderer.RtvHeap(), &renderer.DsvHeap(), &renderer.SrvHeap(),
             DXGI_FORMAT_R8G8B8A8_UNORM, sceneClear);
 		viewportRT.Resize(vpReqW, vpReqH);

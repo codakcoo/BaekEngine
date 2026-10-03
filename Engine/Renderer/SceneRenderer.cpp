@@ -1,6 +1,7 @@
 ﻿#include "Renderer/SceneRenderer.h"
 #include "RHI/Shader.h"
 #include <DirectXMath.h>
+#include <vector>
 
 using namespace DirectX;
 
@@ -73,6 +74,10 @@ namespace baek
 		pso.SampleDesc.Count = 1;
 		ThrowIfFailed(device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&mPso)));
 
+		auto linePSO = pso;
+		linePSO.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&linePSO, IID_PPV_ARGS(&mLinePSO)));
+
 		// --- Cube geometry ---
 		const Vertex verts[] = 
 		{
@@ -95,18 +100,56 @@ namespace baek
 
 		mVbv = { mVB->GetGPUVirtualAddress(), sizeof(verts), sizeof(Vertex) };
 		mIbv = { mIB->GetGPUVirtualAddress(), sizeof(idx), DXGI_FORMAT_R16_UINT };
+
+		// --- Grid geometry (XZ plane, 1m spacing, -20...20) ---
+		const int half = 20;
+		const XMFLOAT3 gray = { 0.35f, 0.35f, 0.35f };
+		const XMFLOAT3 red = { 0.85f, 0.20f, 0.20f };			// X axis
+		const XMFLOAT3 blue = { 0.20f, 0.35f, 0.95f };			// Z axis
+
+		std::vector<Vertex> grid;
+		grid.resize((half * 2 + 1) * 4);
+		for (int i = -half; i <= half; ++i)
+		{
+			const float f = (float)i, e = (float)half;
+
+			const XMFLOAT3& cz = (i == 0) ? blue : gray;			// Z와 평행한 선 (x = i)
+			grid.push_back({ { f, 0.0f, -e }, cz });
+			grid.push_back({ { f, 0.0f,  e }, cz });
+
+			const XMFLOAT3& cx = (i == 0) ? red : gray;				// x와 평행한 선 (z = i)
+			grid.push_back({ { -e, 0.0f, f }, cx });
+			grid.push_back({ {  e, 0.0f,  f }, cx });
+		}
+		mGridVertexCount = (UINT)grid.size();
+
+		const UINT gridByte = (UINT)(grid.size() * sizeof(Vertex));
+		mGridVB = CreateUploadBuffer(device, grid.data(), gridByte);
+		mGridVB->SetName(L"GridVB");
+		mGridVbv = { mGridVB->GetGPUVirtualAddress(), gridByte, sizeof(Vertex) };
 	}
 	
 	void SceneRenderer::Render(ID3D12GraphicsCommandList* cmd, const DirectX::XMMATRIX& viewProj)
 	{
-		XMMATRIX world = XMMatrixIdentity();
-
-		XMFLOAT4X4 mvp;
-		XMStoreFloat4x4(&mvp, XMMatrixTranspose(world * viewProj));
-
 		cmd->SetGraphicsRootSignature(mRootSig.Get());
+
+		auto setMvp = [&](const XMMATRIX& world)
+		{
+			XMFLOAT4X4 mvp;
+			XMStoreFloat4x4(&mvp, XMMatrixTranspose(world * viewProj));
+			cmd->SetGraphicsRoot32BitConstants(0, 16, &mvp, 0);
+		};
+		
+		// --- Grid ---
+		setMvp(XMMatrixIdentity());
+		cmd->SetPipelineState(mLinePSO.Get());
+		cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
+		cmd->IASetVertexBuffers(0, 1, &mGridVbv);
+		cmd->DrawInstanced(mGridVertexCount, 1, 0, 0);
+
+		// --- Cube (바닥 위에 올려놓기: y + 1) ---
+		setMvp(XMMatrixTranslation(0.0f, 1.0f, 0.0f));
 		cmd->SetPipelineState(mPso.Get());
-		cmd->SetGraphicsRoot32BitConstants(0, 16, &mvp, 0);
 		cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		cmd->IASetVertexBuffers(0, 1, &mVbv);
 		cmd->IASetIndexBuffer(&mIbv);
@@ -116,6 +159,6 @@ namespace baek
 	
 	void SceneRenderer::Shutdown()
 	{
-		mVB.Reset(); mIB.Reset(); mPso.Reset(); mRootSig.Reset();
+		mVB.Reset(); mIB.Reset(); mPso.Reset(); mLinePSO.Reset(); mRootSig.Reset();
 	}
 }
