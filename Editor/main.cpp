@@ -14,6 +14,7 @@
 
 baek::RenderTarget viewportRT;
 UINT vpReqW = 1200, vpReqH = 720;       // UI가 요청한 크기
+static int gSelected = -1;                  // 선택된 엔티티 인덱스 (-1 = 없음)
 
 static void UpdateCameraInput(baek::Camera& cam, bool hovered)
 {
@@ -49,7 +50,58 @@ static void UpdateCameraInput(baek::Camera& cam, bool hovered)
         cam.Zoom(io.MouseWheel * 0.5f);
 }
 
-static void DrawEditorUI(bool& showDemo, baek::Camera& camera)
+// 엔티티 목록에서 하나를 선택하고, Transform을 드래그로 편집하는 패널을 붙입니다.
+static void DrawHierarchy(baek::Scene& scene)
+{
+    ImGui::Begin("Hierarchy");
+
+    auto& ents = scene.Entities();
+    for (int i = 0; i < (int)ents.size(); ++i)
+    {
+        ImGui::PushID(i);               // 같은 이름의 엔티티가 있어도 ID가 겹치지 않게
+        const char* label = ents[i].name.empty() ? "(unnamed)" : ents[i].name.c_str();
+        if(ImGui::Selectable(label, gSelected == i))
+            gSelected = i;
+        ImGui::PopID();
+    }
+
+    // 빈 공간을 클릭하면 선택 해제
+    if(ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemHovered())
+        gSelected = -1;
+
+    ImGui::End();
+}
+
+static void DrawInspector(baek::Scene& scene)
+{
+    ImGui::Begin("Inspector");
+
+    auto& ents = scene.Entities();
+    if (gSelected < 0 || gSelected >= (int)ents.size())
+    {
+        ImGui::TextDisabled("No entity selected");
+        ImGui::End();
+        return;
+    }
+
+    baek::Entity& e = ents[gSelected];
+
+    char buf[128];
+    strncpy_s(buf, e.name.c_str(), _TRUNCATE);
+    if(ImGui::InputText("Name", buf, sizeof(buf)))
+        e.name = buf;
+
+    ImGui::Checkbox("Visible", &e.visible);
+
+    ImGui::SeparatorText("Transform");
+    ImGui::DragFloat3("Position", &e.transform.position.x, 0.05f);
+    ImGui::DragFloat3("Rotation", &e.transform.rotation.x, 0.5f);
+    ImGui::DragFloat3("Scale", &e.transform.scale.x, 0.02f, 0.01f, 100.0f);
+
+    ImGui::End();
+}
+
+static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scene)
 {
 	ImGuiID dockId = ImGui::GetID("MainDockSpace");
 
@@ -61,10 +113,14 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera)
 
         // 왼쪽에 Stats, 가운데 Viewport
         ImGuiID center = dockId;
-        ImGuiID right = ImGui::DockBuilderSplitNode(dockId, ImGuiDir_Right, 0.22f, nullptr, &center);
+        ImGuiID left = ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.18f, nullptr, &center);
+        ImGuiID right = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.22f, nullptr, &center);
+        ImGuiID rightBottom = ImGui::DockBuilderSplitNode(right, ImGuiDir_Down, 0.30f, nullptr, &right);
 
+        ImGui::DockBuilderDockWindow("Hierarchy", left);
         ImGui::DockBuilderDockWindow("Viewport", center);
-        ImGui::DockBuilderDockWindow("Stats", right);
+        ImGui::DockBuilderDockWindow("Inspector", right);
+        ImGui::DockBuilderDockWindow("Stats", rightBottom);
         ImGui::DockBuilderFinish(dockId);
 	}
 
@@ -81,6 +137,9 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera)
     ImGui::Separator();
     ImGui::Checkbox("ImGui Demo", &showDemo);
     ImGui::End();
+
+    DrawHierarchy(scene);
+    DrawInspector(scene);
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,0));
 	ImGui::Begin("Viewport");
@@ -157,7 +216,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 			}
 
             imgui.BeginFrame();
-            DrawEditorUI(showDemo, camera);
+            DrawEditorUI(showDemo, camera, scene);
 
             renderer.BeginFrame(clear);
 			auto* cmd = renderer.CommandList();

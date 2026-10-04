@@ -6,6 +6,8 @@
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx12.h"
 
+#include <filesystem>
+
 // imgui_impl_win32.h에 주석 처리돼 있어서 직접 선언
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -17,9 +19,12 @@ namespace baek
 
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
+		std::filesystem::create_directories(BAEK_ROOT_DIR "Saved");			// ImGui는 폴더를 만들어주지 않음
+
 		ImGuiIO& io = ImGui::GetIO();
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+		io.IniFilename = BAEK_ROOT_DIR "Saved/imgui.ini";					// 문자열 리터럴이라 수명 문제 없음
 		io.ConfigWindowsMoveFromTitleBarOnly = true;
 		ImGui::StyleColorsDark();
 
