@@ -14,11 +14,13 @@ namespace baek
 		DirectX::XMMATRIX Matrix() const
 		{
 			using namespace DirectX;
+			// ImGuizmo가 행렬을 오일러 각으로 분해할 때 쓰는 순서(X->Y->Z)와 우리 쪽 순서가 같아야 함.
+			// 다를경우 기즈모가 다른 각도로 튈 수 있음.
 			return XMMatrixScaling(scale.x, scale.y, scale.z)
-					* XMMatrixRotationRollPitchYaw(XMConvertToRadians(rotation.x),
-												   XMConvertToRadians(rotation.y),
-												   XMConvertToRadians(rotation.z))
-					* XMMatrixTranslation(position.x, position.y, position.z);
+				* XMMatrixRotationX(XMConvertToRadians(rotation.x))
+				* XMMatrixRotationY(XMConvertToRadians(rotation.y))
+				* XMMatrixRotationZ(XMConvertToRadians(rotation.z))
+				* XMMatrixTranslation(position.x, position.y, position.z);
 		}
 	};
 }

@@ -8,6 +8,7 @@
 #include "Scene/Scene.h"
 #include "imgui.h"
 #include "imgui_internal.h"
+#include "ImGuizmo.h"
 
 #include <exception>
 #include <algorithm>
@@ -15,6 +16,7 @@
 baek::RenderTarget viewportRT;
 UINT vpReqW = 1200, vpReqH = 720;       // UI가 요청한 크기
 static int gSelected = -1;                  // 선택된 엔티티 인덱스 (-1 = 없음)
+static ImGuizmo::OPERATION gGizmoOp = ImGuizmo::TRANSLATE;
 
 static void UpdateCameraInput(baek::Camera& cam, bool hovered)
 {
@@ -101,6 +103,45 @@ static void DrawInspector(baek::Scene& scene)
     ImGui::End();
 }
 
+static void DrawGizmo(baek::Camera& camera, baek::Scene& scene, bool hovered)
+{
+    using namespace DirectX;
+    ImGuiIO& io = ImGui::GetIO();
+
+    // 단축키: 카메라 플라이 중(우클릭)이거나 텍스트 입력 중에는 무시
+    if (hovered && !ImGui::IsMouseDown(ImGuiMouseButton_Right) && !io.WantTextInput)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_W)) gGizmoOp = ImGuizmo::TRANSLATE;
+        if (ImGui::IsKeyPressed(ImGuiKey_E)) gGizmoOp = ImGuizmo::ROTATE;
+        if (ImGui::IsKeyPressed(ImGuiKey_R)) gGizmoOp = ImGuizmo::SCALE;
+    }
+
+    auto& ents = scene.Entities();
+    if (gSelected < 0 || gSelected > (int)ents.size()) return;
+    baek::Transform& t = ents[gSelected].transform;
+
+    // 기즈모를 Viewport 이미지 영역에 맞춤
+    const ImVec2 min = ImGui::GetItemRectMin();
+    const ImVec2 size = ImGui::GetItemRectSize();
+    ImGuizmo::SetOrthographic(false);
+    ImGuizmo::SetDrawlist();
+    ImGuizmo::SetRect(min.x, min.y, size.x, size.y);
+
+    XMFLOAT4X4 view, proj, world;
+    XMStoreFloat4x4(&view, camera.View());
+    XMStoreFloat4x4(&proj, camera.Proj());
+    XMStoreFloat4x4(&world, t.Matrix());
+
+    // 스케일은 로컬 축에서만 의미가 있음
+    const ImGuizmo::MODE mode = (gGizmoOp == ImGuizmo::SCALE) ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+
+    if (ImGuizmo::Manipulate(&view.m[0][0], &proj.m[0][0], gGizmoOp, mode, &world.m[0][0]))
+    {
+        // float* 이기때문에 주소로 넘겨주면 float의 크기만큼만 넘겨면 x -> y -> z 로 원소를 가져올 수 있음
+        ImGuizmo::DecomposeMatrixToComponents(&world.m[0][0], &t.position.x, &t.rotation.x, &t.scale.x);
+    }
+}
+
 static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scene)
 {
 	ImGuiID dockId = ImGui::GetID("MainDockSpace");
@@ -129,6 +170,7 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scen
 
     const auto& p = camera.Position();
 
+    // Stats 그리기
     ImGui::Begin("Stats");
     const ImGuiIO& io = ImGui::GetIO();
     ImGui::Text("FPS : %.1f", io.Framerate);
@@ -138,15 +180,22 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scen
     ImGui::Checkbox("ImGui Demo", &showDemo);
     ImGui::End();
 
+    // 계층, 도구 그리기
     DrawHierarchy(scene);
     DrawInspector(scene);
 
+    // Viewport 그리기
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,0));
 	ImGui::Begin("Viewport");
 	ImVec2 avail = ImGui::GetContentRegionAvail();
 	vpReqW = (UINT)std::max(1.0f, avail.x);
 	vpReqH = (UINT)std::max(1.0f, avail.y);
 	ImGui::Image((ImTextureID)(viewportRT.Srv().ptr), avail);
+    
+    // 기즈모 그리기
+    const bool hovered = ImGui::IsWindowHovered();
+    DrawGizmo(camera, scene, hovered);
+
     UpdateCameraInput(camera, ImGui::IsWindowHovered());
 	ImGui::End();
 	ImGui::PopStyleVar();
@@ -216,6 +265,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 			}
 
             imgui.BeginFrame();
+            ImGuizmo::BeginFrame();
             DrawEditorUI(showDemo, camera, scene);
 
             renderer.BeginFrame(clear);

@@ -3,6 +3,7 @@
 endif()
 
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
+set(IMGUIZMO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ImGuizmo/src)
 
 add_library(imgui STATIC
     ${IMGUI_DIR}/imgui.cpp
@@ -13,6 +14,13 @@ add_library(imgui STATIC
     ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
     ${IMGUI_DIR}/backends/imgui_impl_dx12.cpp)
 add_subdirectory(DirectX-Headers)
+
+add_library(imguizmo STATIC ${IMGUIZMO_DIR}/ImGuizmo.cpp)
+target_include_directories(imguizmo PUBLIC ${IMGUIZMO_DIR})
+target_link_libraries(imguizmo PUBLIC imgui)
+if(MSVC)
+    target_compile_options(imguizmo PRIVATE /w)   # 서드파티 경고 끄기
+endif()
 
 target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
 target_link_libraries(imgui PUBLIC d3d12 dxgi d3dcompiler)
