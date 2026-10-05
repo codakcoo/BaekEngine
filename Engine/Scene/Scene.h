@@ -6,6 +6,7 @@
 namespace baek
 {
 	class Mesh;
+	class Texture;
 
 	struct Entity
 	{
@@ -16,6 +17,7 @@ namespace baek
 		float metallic = 0.0f;					// 0 = 비금속, 1 = 금속
 		float roughness = 0.5f;					// 0 = 매끈, 1 = 거침
 		bool visible = true;
+		const Texture* albedoMap = nullptr;		// 없으면 흰색 텍스처 사용
 	};
 
 	struct DirectionalLight

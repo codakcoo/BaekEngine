@@ -1,5 +1,8 @@
 static const float PI = 3.14159265f;
 
+Texture2D       gAlbedoMap : register(t0);
+SamplerState    gSampler : register(s0);
+
 cbuffer PerFrame : register(b0)
 {
     float4x4 gViewProj;
@@ -18,17 +21,19 @@ cbuffer PerObject : register(b1)
 
 struct VSIn
 {
-    float3 pos : POSITION;
-    float3 normal : NORMAL;
-    float3 color : COLOR;
+    float3 pos      : POSITION;
+    float3 normal   : NORMAL;
+    float2 uv       : TEXCOORD;
+    float3 color    : COLOR;
 };
 
 struct VSOut
 {
-    float4 pos : SV_POSITION;
+    float4 pos      : SV_POSITION;
     float3 worldPos : POSITION;
-    float3 normal : NORMAL;
-    float3 color : COLOR;
+    float3 normal   : NORMAL;
+    float2 uv       : TEXCOORD;
+    float3 color    : COLOR;
 };
 
 VSOut VSMain(VSIn i)
@@ -39,7 +44,7 @@ VSOut VSMain(VSIn i)
     o.pos = mul(wp, gViewProj);
     o.normal = mul(i.normal, (float3x3) gWorldInvTranspose);
     o.color = pow(i.color * gBaseColor.rgb, 2.2f);          // sRGB -> linear
-
+    o.uv = i.uv;
     
     return o;
 }
@@ -79,7 +84,7 @@ float3 F_Schlick(float VdotH, float3 F0)
 
 float4 PSLit(VSOut i) : SV_Target
 {
-    float3 albedo = i.color;
+    float3 albedo = i.color * gAlbedoMap.Sample(gSampler, i.uv).rgb;
     float metallic = saturate(gMaterial.x);
     float roughness = clamp(gMaterial.y, 0.045f, 1.0f);
     

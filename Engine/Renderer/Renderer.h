@@ -4,6 +4,8 @@
 #include "RHI/SwapChain.h"
 #include "RHI/DescriptorHeap.h"
 
+#include <functional>
+
 namespace baek
 {
 	class Renderer
@@ -15,6 +17,7 @@ namespace baek
 		void Shutdown();
 		void WaitIdle() { mDevice.Flush(); }
 		void BindBackBuffer();
+		void Immediate(const std::function<void(ID3D12GraphicsCommandList*)>& fn);		// 프레임 밖에서만 호출
 
 
 		void BeginFrame(const float clearColor[4]);						// 대기, 리셋, RT 전이, 클리어, RT 바인딩
@@ -24,7 +27,7 @@ namespace baek
 		DescriptorHeap& SrvHeap() { return mSrvHeap; }
 		DescriptorHeap& RtvHeap() { return mRtvHeap; }
 		DescriptorHeap& DsvHeap() { return mDsvHeap; }
-		ID3D12GraphicsCommandList* CommandList() const { return mCmd.Get(); }
+		ID3D12GraphicsCommandList* CommandList() const { return mCmdList.Get(); }
 		UINT FrameIndex() const { return mFrameIndex; }					// mAllocators[]의 인덱스로 쓰는 그 변수
 
 	private:
@@ -38,6 +41,6 @@ namespace baek
 		ComPtr<ID3D12CommandAllocator>			mAllocators[FrameCount];
 		uint64_t								mFrameFence[FrameCount] = {};
 		uint64_t								mFrameIndex = 0;
-		ComPtr<ID3D12GraphicsCommandList>		mCmd;
+		ComPtr<ID3D12GraphicsCommandList>		mCmdList;
 	};
 }

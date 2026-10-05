@@ -57,8 +57,10 @@ namespace baek
 		auto face = [&](XMFLOAT3 n, XMFLOAT3 a, XMFLOAT3 b, XMFLOAT3 c, XMFLOAT3 d)
 		{
 			const int base = (int)verts.size();
-			for(const XMFLOAT3& p : {a, b, c, d})
-				verts.push_back({p, n, white});
+			const XMFLOAT3 ps[4] = { a, b, c, d };
+			const DirectX::XMFLOAT2 uvs[4] = { {0, 1}, {0, 0}, {1, 0}, {1, 1} };		// 좌하, 좌상, 우상, 우하
+			for(int k = 0; k < 4; ++k)
+				verts.push_back({ps[k], n, uvs[k], white});
 			for(int o : { 0, 1, 2, 0, 2 , 3})
 				idx.push_back((uint16_t)(base+o));
 		};
@@ -92,7 +94,8 @@ namespace baek
 			{
 				const float theta = XM_2PI * j / slices;
 				const XMFLOAT3 n{ sinf(phi) * cosf(theta), cosf(phi), sinf(phi) * sinf(theta) };
-				verts.push_back({ { n.x * r, n.y * r, n.z * r }, n, white });		// 구는 위치 방향이 곧 노멀
+				verts.push_back({ { n.x * r, n.y * r, n.z * r }, n, 
+					{(float)j / slices, (float)i / stacks}, white});		// 구는 위치 방향이 곧 노멀
 			}
 		}
 

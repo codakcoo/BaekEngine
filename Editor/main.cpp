@@ -6,6 +6,7 @@
 #include "UI/ImGuiLayer.h"
 #include "Scene/Camera.h"
 #include "Renderer/Mesh.h"
+#include "Renderer\Texture.h"
 #include "Scene/Scene.h"
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -14,9 +15,12 @@
 #include <exception>
 #include <algorithm>
 #include <string>
+#include <vector>
 
 baek::RenderTarget sceneRT;             // HDR: 씬을 그리는 곳
 baek::RenderTarget viewportRT;          // LDR: 톤매핑 결과, ImGui가 표시 (기존 변수)
+
+
 UINT vpReqW = 1200, vpReqH = 720;       // UI가 요청한 크기
 static int gSelected = -1;                  // 선택된 엔티티 인덱스 (-1 = 없음)
 static ImGuizmo::OPERATION gGizmoOp = ImGuizmo::TRANSLATE;
@@ -250,8 +254,24 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         tonemap.Init(device, DXGI_FORMAT_R8G8B8A8_UNORM);
 
         baek::SceneRenderer sceneRenderer;
-        sceneRenderer.Init(device, DXGI_FORMAT_R16G16B16A16_FLOAT, baek::RenderTarget::DepthFormat);
+        sceneRenderer.Init(renderer, DXGI_FORMAT_R16G16B16A16_FLOAT, baek::RenderTarget::DepthFormat);
 
+        baek::Texture checker;                  // 체커보드 텍스처 (256x256, 32픽셀 칸)
+        {
+            const UINT size = 256;
+            std::vector<uint8_t> px(size * size * 4);
+            for (UINT y = 0; y < size; ++y)
+            {
+                for (UINT x = 0; x < size; ++x)
+                {
+                    const uint8_t v = (((x/32) + (y/32))%2 == 0) ? 235 : 70;
+                    uint8_t* p = &px[(y * size + x) * 4];
+                    p[0] = p[1] = p[2] = v;
+                    p[3] = 255;
+                }
+            }
+            checker.CreateFromPixels(renderer, px.data(), size, size, true);
+        }
         baek::Mesh cubeMesh = baek::Mesh::CreateCube(renderer.GetDevice().Get());
 
         baek::Scene scene;
@@ -260,6 +280,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             e.mesh = &cubeMesh;
             e.transform.position = { 0.0f, 0.5f, 0.0f };
             e.color = { 0.85f, 0.30f, 0.25f };
+            e.albedoMap = &checker;
         }
         {
             auto& e = scene.Create("Cube B");
@@ -268,6 +289,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             e.transform.rotation = { 0.0f, 30.0f, 0.0f };
             e.transform.scale = { 2.0f, 2.0f, 2.0f };
             e.color = { 0.38f, 0.60f, 0.90f };
+            e.albedoMap = &checker;
         }
         {
             auto& e = scene.Create("Cube C");
@@ -275,6 +297,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             e.transform.position = { -3.0f, 0.25f, -1.0f };
             e.transform.scale = { 0.5f, 0.5f, 0.5f };
             e.color = { 0.95f, 0.80f, 0.30f };
+            e.albedoMap = &checker;
         }
 
         baek::Mesh sphereMesh = baek::Mesh::CreateSphere(device);
@@ -291,6 +314,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                 e.color = { 1.00f, 0.77f, 0.34f };      // gold
                 e.metallic = 1.0f;
                 e.roughness = rough;
+                e.albedoMap = &checker;
             }
             {
                 auto& e = scene.Create("Plastic" + std::to_string(i));
@@ -299,6 +323,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                 e.color = { 0.80f, 0.10f, 0.10f };      // gold
                 e.metallic = 0.0f;
                 e.roughness = rough;
+                e.albedoMap = &checker;
             }
 
         }
@@ -345,6 +370,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         renderer.WaitIdle();                        // GPU가 ImGui 리소스를 다 쓴 뒤에
         cubeMesh.Shutdown();
         sphereMesh.Shutdown();
+        checker.Shutdown();
         sceneRenderer.Shutdown();
         sceneRT.Shutdown();
         viewportRT.Shutdown();
