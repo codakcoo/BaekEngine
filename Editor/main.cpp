@@ -13,6 +13,7 @@
 
 #include <exception>
 #include <algorithm>
+#include <string>
 
 baek::RenderTarget sceneRT;             // HDR: 씬을 그리는 곳
 baek::RenderTarget viewportRT;          // LDR: 톤매핑 결과, ImGui가 표시 (기존 변수)
@@ -104,6 +105,8 @@ static void DrawInspector(baek::Scene& scene)
     ImGui::DragFloat3("Scale", &e.transform.scale.x, 0.02f, 0.01f, 100.0f);
     ImGui::SeparatorText("Material");
     ImGui::ColorEdit3("Color", &e.color.x);
+    ImGui::SliderFloat("Metallic", &e.metallic, 0.0f, 1.0f);
+    ImGui::SliderFloat("Roughness", &e.roughness, 0.0, 1.0f);
 
     ImGui::End();
 }
@@ -274,6 +277,32 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             e.color = { 0.95f, 0.80f, 0.30f };
         }
 
+        baek::Mesh sphereMesh = baek::Mesh::CreateSphere(device);
+
+        for (int i = 0; i < 5; ++i)
+        {
+            const float rough = 0.1f + 0.2f * i;        // 0.1, 0.3, 0.5, 0.7, 0.9
+            const float x = -4.0f + 2.0f * i;
+
+            {
+                auto& e = scene.Create("Metal" + std::to_string(i));
+                e.mesh = &sphereMesh;
+                e.transform.position = { x, 0.5f, -3.0f };
+                e.color = { 1.00f, 0.77f, 0.34f };      // gold
+                e.metallic = 1.0f;
+                e.roughness = rough;
+            }
+            {
+                auto& e = scene.Create("Plastic" + std::to_string(i));
+                e.mesh = &sphereMesh;
+                e.transform.position = { x, 0.5f, -5.0f };
+                e.color = { 0.80f, 0.10f, 0.10f };      // gold
+                e.metallic = 0.0f;
+                e.roughness = rough;
+            }
+
+        }
+
         const float clear[4] = { 0.10f, 0.10f, 0.15f, 1.0f };
         bool showDemo = false;
         baek::Camera camera;
@@ -315,6 +344,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
         renderer.WaitIdle();                        // GPU가 ImGui 리소스를 다 쓴 뒤에
         cubeMesh.Shutdown();
+        sphereMesh.Shutdown();
         sceneRenderer.Shutdown();
         sceneRT.Shutdown();
         viewportRT.Shutdown();

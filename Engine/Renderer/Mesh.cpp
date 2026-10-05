@@ -74,4 +74,42 @@ namespace baek
 		m.Create(device, verts, idx);
 		return m;
 	}
+
+	Mesh Mesh::CreateSphere(ID3D12Device* device, int slices, int stacks)
+	{
+		using namespace DirectX;
+		const float r = 0.5f;
+		const XMFLOAT3 white{ 1, 1, 1 };
+
+		std::vector<Vertex> verts;
+		std::vector<uint16_t> idx;
+
+		// 위도(stacks) x 경도(slices) 격자, 이음매 때문에 경도 항향은 slices + 1개
+		for (int i = 0; i <= stacks; ++i)
+		{
+			const float phi = XM_PI * i / stacks;			// 0(북극) ~ PI(남극)
+			for (int j = 0; j <= slices; ++j)
+			{
+				const float theta = XM_2PI * j / slices;
+				const XMFLOAT3 n{ sinf(phi) * cosf(theta), cosf(phi), sinf(phi) * sinf(theta) };
+				verts.push_back({ { n.x * r, n.y * r, n.z * r }, n, white });		// 구는 위치 방향이 곧 노멀
+			}
+		}
+
+		const int ring = slices + 1;
+		for (int i = 0; i < stacks; ++i)
+		{
+			for (int j = 0; j < slices; ++j)
+			{
+				const int a = i * ring + j;
+				const int b = (i + 1) * ring + j;
+				for (int v : { a, a+1, b, b, a+1, b+1})
+					idx.push_back((uint16_t)v);
+			}
+		}
+
+		Mesh m;
+		m.Create(device, verts, idx);
+		return m;
+	}
 }

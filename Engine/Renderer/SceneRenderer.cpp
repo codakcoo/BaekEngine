@@ -24,15 +24,16 @@ namespace baek
 		XMFLOAT4X4 world;
 		XMFLOAT4X4 worldInvTranspose;
 		XMFLOAT4 baseColor;
+		XMFLOAT4 material;			// x = metallic, y = roughness
 	};
 
 	void SceneRenderer::Init(ID3D12Device* device, DXGI_FORMAT rtvFormat, DXGI_FORMAT dsvFormat)
 	{
 		// --- Root Signature: b0 = MVP (root constants 16개) ---
-		CD3DX12_ROOT_PARAMETER param[2];
-		param[0].InitAsConstantBufferView(0);
-		param[1].InitAsConstantBufferView(1);
-		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(2, param, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		CD3DX12_ROOT_PARAMETER params[2];
+		params[0].InitAsConstantBufferView(0);
+		params[1].InitAsConstantBufferView(1);
+		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(2, params, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 		ComPtr<ID3DBlob> sig, err;
 		HRESULT hr = D3D12SerializeRootSignature(&rsDesc, D3D_ROOT_SIGNATURE_VERSION_1, &sig, &err);
@@ -128,7 +129,7 @@ namespace baek
 
 		
 		// --- PerObject ---
-		auto setObject = [&](const XMMATRIX& world, const XMFLOAT3& color)
+		auto setObject = [&](const XMMATRIX& world, const XMFLOAT3& color, float metallic, float roughness)
 		{
 			XMMATRIX w = world;
 			w.r[3] = XMVectorSet(0, 0, 0, 1);				// 노멸 변환에는 이동 성분이 필요 없음
@@ -137,12 +138,13 @@ namespace baek
 			PerObjectCB po{};
 			XMStoreFloat4x4(&po.world,						XMMatrixTranspose(world));
 			XMStoreFloat4x4(&po.worldInvTranspose,			XMMatrixTranspose(invT));
-			po.baseColor = { color.x, color.y, color.z, 1.0f};
+			po.baseColor = { color.x, color.y, color.z, 1.0f };
+			po.material = { metallic, roughness, 0.0f, 0.0f };
 			cmd->SetGraphicsRootConstantBufferView(1, cb.Alloc(&po, sizeof(po)));
 		};
 		
 		// --- Grid ---
-		setObject(XMMatrixIdentity(), { 1, 1, 1 });
+		setObject(XMMatrixIdentity(), { 1, 1, 1 }, 0.0f, 1.0f );				// grid
 		cmd->SetPipelineState(mLinePSO.Get());
 		cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
 		cmd->IASetVertexBuffers(0, 1, &mGridVbv);
@@ -153,7 +155,7 @@ namespace baek
 		for (const Entity& e : scene.Entities())
 		{
 			if (!e.visible || !e.mesh) continue;
-			setObject(e.transform.Matrix(), e.color);
+			setObject(e.transform.Matrix(), e.color, e.metallic, e.roughness);		// entity
 			e.mesh->Draw(cmd);
 		}
 	}

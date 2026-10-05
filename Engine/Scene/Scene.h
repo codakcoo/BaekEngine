@@ -13,6 +13,8 @@ namespace baek
 		Transform transform;
 		const Mesh* mesh = nullptr;
 		DirectX::XMFLOAT3 color{ 1, 1, 1 };		// 베이스 컬러
+		float metallic = 0.0f;					// 0 = 비금속, 1 = 금속
+		float roughness = 0.5f;					// 0 = 매끈, 1 = 거침
 		bool visible = true;
 	};
 
@@ -20,7 +22,7 @@ namespace baek
 	{
 		DirectX::XMFLOAT3 direction{ 0.4f, -1.0f, 0.6f };			// 빛이 진행하는 방향
 		DirectX::XMFLOAT3 color{ 1, 1, 1};
-		float intensity = 1.0f;
+		float intensity = 3.0f;
 		float ambient = 0.15f;
 	};
 
