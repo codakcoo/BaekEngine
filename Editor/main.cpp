@@ -99,6 +99,8 @@ static void DrawInspector(baek::Scene& scene)
     ImGui::DragFloat3("Position", &e.transform.position.x, 0.05f);
     ImGui::DragFloat3("Rotation", &e.transform.rotation.x, 0.5f);
     ImGui::DragFloat3("Scale", &e.transform.scale.x, 0.02f, 0.01f, 100.0f);
+    ImGui::SeparatorText("Material");
+    ImGui::ColorEdit3("Color", &e.color.x);
 
     ImGui::End();
 }
@@ -178,6 +180,11 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scen
     ImGui::Text("Cam : %.2f, %.2f, %.2f", p.x, p.y, p.z);
     ImGui::Separator();
     ImGui::Checkbox("ImGui Demo", &showDemo);
+    ImGui::SeparatorText("Directional Light");
+    ImGui::DragFloat3("Direction", &scene.light.direction.x, 0.01f, -1.0f, 1.0f);
+    ImGui::ColorEdit3("Light Color", &scene.light.color.x);
+    ImGui::SliderFloat("Intensity", &scene.light.intensity, 0.0f, 5.0f);
+    ImGui::SliderFloat("Ambient", &scene.light.ambient, 0.0f, 1.0f);
     ImGui::End();
 
     // 계층, 도구 그리기
@@ -235,6 +242,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             auto& e = scene.Create("Cube A");
             e.mesh = &cubeMesh;
             e.transform.position = { 0.0f, 0.5f, 0.0f };
+            e.color = { 0.85f, 0.30f, 0.25f };
         }
         {
             auto& e = scene.Create("Cube B");
@@ -242,12 +250,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             e.transform.position = { 3.0f, 1.0f, 2.0f };
             e.transform.rotation = { 0.0f, 30.0f, 0.0f };
             e.transform.scale = { 2.0f, 2.0f, 2.0f };
+            e.color = { 0.38f, 0.60f, 0.90f };
         }
         {
             auto& e = scene.Create("Cube C");
             e.mesh = &cubeMesh;
             e.transform.position = { -3.0f, 0.25f, -1.0f };
             e.transform.scale = { 0.5f, 0.5f, 0.5f };
+            e.color = { 0.95f, 0.80f, 0.30f };
         }
 
         const float clear[4] = { 0.10f, 0.10f, 0.15f, 1.0f };
@@ -274,7 +284,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             camera.SetAspect((float)viewportRT.Width() / (float)viewportRT.Height());
 
 			viewportRT.Begin(cmd);
-            sceneRenderer.Render(cmd, camera.ViewProj(), scene);
+            sceneRenderer.Render(cmd, renderer.FrameIndex(), camera, scene);
 			viewportRT.End(cmd);
 
 			renderer.BindBackBuffer();                 // 스왑체인 RT로 전환

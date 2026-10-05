@@ -25,6 +25,7 @@ namespace baek
 		DescriptorHeap& RtvHeap() { return mRtvHeap; }
 		DescriptorHeap& DsvHeap() { return mDsvHeap; }
 		ID3D12GraphicsCommandList* CommandList() const { return mCmd.Get(); }
+		UINT FrameIndex() const { return mFrameIndex; }					// mAllocators[]의 인덱스로 쓰는 그 변수
 
 	private:
 		Window* mWindow = nullptr;

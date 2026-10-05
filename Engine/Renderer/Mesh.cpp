@@ -46,19 +46,29 @@ namespace baek
 
 	Mesh Mesh::CreateCube(ID3D12Device* device)
 	{
+		using namespace DirectX;
 		const float h = 0.5f;
-		const std::vector<Vertex> verts =
+		const XMFLOAT3 white{ 1, 1, 1 };
+
+		std::vector<Vertex> verts;
+		std::vector<uint16_t> idx;
+
+		// 정점 4개는 바깥에서 봤을 때 시계 방향 (LH 기준 앞면)
+		auto face = [&](XMFLOAT3 n, XMFLOAT3 a, XMFLOAT3 b, XMFLOAT3 c, XMFLOAT3 d)
 		{
-			{ {-h,-h,-h}, {1,1,1} }, { {-h, h,-h}, {0,0,0} },
-			{ { h, h,-h}, {1,0,0} }, { { h,-h,-h}, {0,1,0} },
-			{ {-h,-h, h}, {0,0,1} }, { {-h, h, h}, {1,1,0} },
-			{ { h, h, h}, {0,1,1} }, { { h,-h, h}, {1,0,1} },
+			const int base = (int)verts.size();
+			for(const XMFLOAT3& p : {a, b, c, d})
+				verts.push_back({p, n, white});
+			for(int o : { 0, 1, 2, 0, 2 , 3})
+				idx.push_back((uint16_t)(base+o));
 		};
-		const std::vector<uint16_t> idx =
-		{
-			0,1,2, 0,2,3,   4,6,5, 4,7,6,   4,5,1, 4,1,0,
-			3,2,6, 3,6,7,   1,5,6, 1,6,2,   4,0,3, 4,3,7,
-		};
+
+		face({ 0, 0,-1 }, { -h,-h,-h }, { -h, h,-h }, { h, h,-h }, { h,-h,-h });   // front
+		face({ 0, 0, 1 }, { -h,-h, h }, { h,-h, h }, { h, h, h }, { -h, h, h });   // back
+		face({ 0, 1, 0 }, { -h, h,-h }, { -h, h, h }, { h, h, h }, { h, h,-h });   // top
+		face({ 0,-1, 0 }, { -h,-h,-h }, { h,-h,-h }, { h,-h, h }, { -h,-h, h });   // bottom
+		face({ -1, 0, 0 }, { -h,-h, h }, { -h, h, h }, { -h, h,-h }, { -h,-h,-h });   // left
+		face({ 1, 0, 0 }, { h,-h,-h }, { h, h,-h }, { h, h, h }, { h,-h, h });   // right
 
 		Mesh m;
 		m.Create(device, verts, idx);
