@@ -8,7 +8,7 @@ namespace baek
 	{
 	public:
 		void Init(ID3D12Device* device, DescriptorHeap* rtvHeap, DescriptorHeap* dsvHeap, DescriptorHeap* srvHeap,
-			DXGI_FORMAT format, const float clearColor[4]);
+			DXGI_FORMAT format, const float clearColor[4], bool widthDepth = true);
 		void Resize(UINT w, UINT h);					// 호출 전 GPU Idle 보장 필요
 		void Shutdown();
 
@@ -37,6 +37,6 @@ namespace baek
 		UINT mWidth = 0, mHeight = 0;
 		float mClear[4] = { 0,0,0,1 };
 
-		
+		bool mHasDepth = true;
 	};
 }

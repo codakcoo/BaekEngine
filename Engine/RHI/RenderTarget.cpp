@@ -2,12 +2,14 @@
 
 namespace baek
 {
-	void RenderTarget::Init(ID3D12Device* device, DescriptorHeap* rtvHeap, DescriptorHeap* dsvHeap, DescriptorHeap* srvHeap, DXGI_FORMAT format, const float clearColor[4])
+	void RenderTarget::Init(ID3D12Device* device, 
+							DescriptorHeap* rtvHeap, DescriptorHeap* dsvHeap, DescriptorHeap* srvHeap, 
+							DXGI_FORMAT format, const float clearColor[4], bool widthDepth)
 	{
-		mDevice = device; mRtvHeap = rtvHeap; mDsvHeap = dsvHeap; mSrvHeap = srvHeap; mFormat = format;
+		mDevice = device; mRtvHeap = rtvHeap; mDsvHeap = dsvHeap; mSrvHeap = srvHeap; mFormat = format; mHasDepth = widthDepth;
 		memcpy(mClear, clearColor, sizeof(mClear));
 		mRtv = mRtvHeap->Allocate();					// 디스크립터는 한 번만 할당하고 재사용
-		mDsv = mDsvHeap->Allocate();
+		if(mHasDepth) mDsv = mDsvHeap->Allocate();
 		mSrv = mSrvHeap->Allocate();
 	}
 
@@ -33,13 +35,16 @@ namespace baek
 		dcv.Format = DepthFormat;
 		dcv.DepthStencil.Depth = 1.0f;
 
-		ThrowIfFailed(mDevice->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
-			&ddesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &dcv, IID_PPV_ARGS(&mDepth)));
-		mDepth->SetName(L"ViewportDepth");
+		if (mHasDepth)
+		{
+			ThrowIfFailed(mDevice->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
+				&ddesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &dcv, IID_PPV_ARGS(&mDepth)));
+			mDepth->SetName(L"ViewportDepth");
+			mDevice->CreateDepthStencilView(mDepth.Get(), nullptr, mDsv.cpu);
+		}
 
 		mDevice->CreateRenderTargetView(mTex.Get(), nullptr, mRtv.cpu);
 		mDevice->CreateShaderResourceView(mTex.Get(), nullptr, mSrv.cpu);
-		mDevice->CreateDepthStencilView(mDepth.Get(), nullptr, mDsv.cpu);
 	}
 	
 	void RenderTarget::Shutdown()
@@ -47,7 +52,7 @@ namespace baek
 		mTex.Reset();
 		mDepth.Reset();
 		if (mRtvHeap) mRtvHeap->Free(mRtv);
-		if (mDsvHeap) mDsvHeap->Free(mDsv);
+		if (mDsvHeap && mHasDepth) mDsvHeap->Free(mDsv);
 		if (mSrvHeap) mSrvHeap->Free(mSrv);
 	}
 
@@ -57,9 +62,9 @@ namespace baek
 			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
 		cmd->ResourceBarrier(1, &b);
 
-		cmd->OMSetRenderTargets(1, &mRtv.cpu, FALSE, &mDsv.cpu);
+		cmd->OMSetRenderTargets(1, &mRtv.cpu, FALSE, mHasDepth ? &mDsv.cpu : nullptr);
 		cmd->ClearRenderTargetView(mRtv.cpu, mClear, 0, nullptr);
-		cmd->ClearDepthStencilView(mDsv.cpu, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+		if(mHasDepth) cmd->ClearDepthStencilView(mDsv.cpu, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 		D3D12_VIEWPORT vp{ 0,0,(float)mWidth,(float)mHeight,0,1 };
 		D3D12_RECT sc{ 0, 0, (LONG)mWidth,(LONG)mHeight };

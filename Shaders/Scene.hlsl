@@ -35,7 +35,7 @@ VSOut VSMain(VSIn i)
     o.worldPos = wp.xyz;
     o.pos = mul(wp, gViewProj);
     o.normal = mul(i.normal, (float3x3) gWorldInvTranspose);
-    o.color = i.color * gBaseColor.rgb;
+    o.color = pow(i.color * gBaseColor.rgb, 2.2f);          // sRGB -> linear
 
     
     return o;

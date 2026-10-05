@@ -1,6 +1,7 @@
 ﻿#include "Core/Window.h"
 #include "Renderer/Renderer.h"
 #include "Renderer/SceneRenderer.h"
+#include "Renderer\Tonemap.h"
 #include "RHI/RenderTarget.h"
 #include "UI/ImGuiLayer.h"
 #include "Scene/Camera.h"
@@ -13,10 +14,12 @@
 #include <exception>
 #include <algorithm>
 
-baek::RenderTarget viewportRT;
+baek::RenderTarget sceneRT;             // HDR: 씬을 그리는 곳
+baek::RenderTarget viewportRT;          // LDR: 톤매핑 결과, ImGui가 표시 (기존 변수)
 UINT vpReqW = 1200, vpReqH = 720;       // UI가 요청한 크기
 static int gSelected = -1;                  // 선택된 엔티티 인덱스 (-1 = 없음)
 static ImGuizmo::OPERATION gGizmoOp = ImGuizmo::TRANSLATE;
+static float gExposure = 1.0f;
 
 static void UpdateCameraInput(baek::Camera& cam, bool hovered)
 {
@@ -185,6 +188,7 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scen
     ImGui::ColorEdit3("Light Color", &scene.light.color.x);
     ImGui::SliderFloat("Intensity", &scene.light.intensity, 0.0f, 5.0f);
     ImGui::SliderFloat("Ambient", &scene.light.ambient, 0.0f, 1.0f);
+    ImGui::SliderFloat("Exposure", &gExposure, 0.1f, 5.0f);
     ImGui::End();
 
     // 계층, 도구 그리기
@@ -227,13 +231,23 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         baek::ImGuiLayer imgui;
         imgui.Init(window, renderer);
 
-		const float sceneClear[4] = { 0.12f, 0.12f, 0.13f, 1.0f };          // 백버퍼와 구분되는 색
-		viewportRT.Init(renderer.GetDevice().Get(), &renderer.RtvHeap(), &renderer.DsvHeap(), &renderer.SrvHeap(),
-            DXGI_FORMAT_R8G8B8A8_UNORM, sceneClear);
+        auto* device = renderer.GetDevice().Get();
+
+        const float sceneClear[4] = { 0.012f, 0.012f, 0.014f, 1.0f };   // 선형 값 (화면에서는 어두운 회색)
+        sceneRT.Init(device, &renderer.RtvHeap(), &renderer.DsvHeap(), &renderer.SrvHeap(),
+                     DXGI_FORMAT_R16G16B16A16_FLOAT, sceneClear, true);
+        sceneRT.Resize(vpReqW, vpReqH);
+
+        const float black[4] = { 0, 0, 0, 1 };
+        viewportRT.Init(device, &renderer.RtvHeap(), &renderer.DsvHeap(), &renderer.SrvHeap(),
+                        DXGI_FORMAT_R8G8B8A8_UNORM, black, false);          // 깊이 없음
 		viewportRT.Resize(vpReqW, vpReqH);
 
+        baek::TonemapPass tonemap;
+        tonemap.Init(device, DXGI_FORMAT_R8G8B8A8_UNORM);
+
         baek::SceneRenderer sceneRenderer;
-        sceneRenderer.Init(renderer.GetDevice().Get(), DXGI_FORMAT_R8G8B8A8_UNORM, baek::RenderTarget::DepthFormat);
+        sceneRenderer.Init(device, DXGI_FORMAT_R16G16B16A16_FLOAT, baek::RenderTarget::DepthFormat);
 
         baek::Mesh cubeMesh = baek::Mesh::CreateCube(renderer.GetDevice().Get());
 
@@ -271,6 +285,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             if(vpReqW != viewportRT.Width() || vpReqH != viewportRT.Height())
             {
                 renderer.WaitIdle();                        // 아직 GPU가 쓰는 텍스처를 지우지 않도록 (지연 해제는 나중에)
+                sceneRT.Resize(vpReqW, vpReqH);
                 viewportRT.Resize(vpReqW, vpReqH);          // 크기 변경
 			}
 
@@ -283,8 +298,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             
             camera.SetAspect((float)viewportRT.Width() / (float)viewportRT.Height());
 
-			viewportRT.Begin(cmd);
+            // 1) 씬 -> HDR
+            sceneRT.Begin(cmd);
             sceneRenderer.Render(cmd, renderer.FrameIndex(), camera, scene);
+            sceneRT.End(cmd);
+
+            // 2) HDR -> 톤매핑 -> LDR
+			viewportRT.Begin(cmd);
+            tonemap.Render(cmd, renderer.SrvHeap().Get(), sceneRT.Srv(), gExposure);
 			viewportRT.End(cmd);
 
 			renderer.BindBackBuffer();                 // 스왑체인 RT로 전환
@@ -295,7 +316,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         renderer.WaitIdle();                        // GPU가 ImGui 리소스를 다 쓴 뒤에
         cubeMesh.Shutdown();
         sceneRenderer.Shutdown();
+        sceneRT.Shutdown();
         viewportRT.Shutdown();
+        tonemap.Shutdown();
         imgui.Shutdown();                           // ImGui 해제
         renderer.Shutdown();
     }
