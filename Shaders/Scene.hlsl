@@ -1,7 +1,9 @@
 static const float PI = 3.14159265f;
 
-Texture2D       gAlbedoMap : register(t0);
-SamplerState    gSampler : register(s0);
+Texture2D       gAlbedoMap  : register(t0);
+Texture2D       gNormalMap  : register(t1);
+Texture2D       gMRMap      : register(t2);
+SamplerState    gSampler    : register(s0);
 
 cbuffer PerFrame : register(b0)
 {
@@ -23,6 +25,7 @@ struct VSIn
 {
     float3 pos      : POSITION;
     float3 normal   : NORMAL;
+    float4 tangent  : TANGENT;
     float2 uv       : TEXCOORD;
     float3 color    : COLOR;
 };
@@ -32,6 +35,7 @@ struct VSOut
     float4 pos      : SV_POSITION;
     float3 worldPos : POSITION;
     float3 normal   : NORMAL;
+    float4 tangent  : TANGENT;
     float2 uv       : TEXCOORD;
     float3 color    : COLOR;
 };
@@ -45,6 +49,7 @@ VSOut VSMain(VSIn i)
     o.normal = mul(i.normal, (float3x3) gWorldInvTranspose);
     o.color = pow(i.color * gBaseColor.rgb, 2.2f);          // sRGB -> linear
     o.uv = i.uv;
+    o.tangent = float4(mul(i.tangent.xyz, (float3x3) gWorld), i.tangent.w);
     
     return o;
 }
@@ -85,12 +90,21 @@ float3 F_Schlick(float VdotH, float3 F0)
 float4 PSLit(VSOut i) : SV_Target
 {
     float3 albedo = i.color * gAlbedoMap.Sample(gSampler, i.uv).rgb;
-    float metallic = saturate(gMaterial.x);
-    float roughness = clamp(gMaterial.y, 0.045f, 1.0f);
     
+    float3 mr = gMRMap.Sample(gSampler, i.uv).rgb;
+    float metallic = saturate(gMaterial.x * mr.b);
+    float roughness = clamp(gMaterial.y * mr.g, 0.045f, 1.0f);
+    
+    // Tangent space -> world space
     float3 N = normalize(i.normal);
-    float3 L = normalize(-gLightDir);
+    float3 T = normalize(i.tangent.xyz - N * dot(N, i.tangent.xyz));        // re-orthogonalize
+    float3 B = cross(N, T) * i.tangent.w;
+    
+    float3 nTS = gNormalMap.Sample(gSampler, i.uv).xyz * 2.0f - 1.0f;       // [0,1] -> [-1,1]
+    N = normalize(nTS.x * T + nTS.y * B + nTS.z * N);
+    
     float3 V = normalize(gCameraPos - i.worldPos);
+    float3 L = normalize(-gLightDir);
     float3 H = normalize(L + V);
     
     float NdotL = saturate(dot(N, L));

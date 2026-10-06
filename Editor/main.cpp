@@ -108,9 +108,17 @@ static void DrawInspector(baek::Scene& scene)
     ImGui::DragFloat3("Rotation", &e.transform.rotation.x, 0.5f);
     ImGui::DragFloat3("Scale", &e.transform.scale.x, 0.02f, 0.01f, 100.0f);
     ImGui::SeparatorText("Material");
-    ImGui::ColorEdit3("Color", &e.color.x);
-    ImGui::SliderFloat("Metallic", &e.metallic, 0.0f, 1.0f);
-    ImGui::SliderFloat("Roughness", &e.roughness, 0.0, 1.0f);
+    if (baek::Material* m = e.material)
+    {
+        ImGui::TextDisabled("%s", m->name.c_str());
+        ImGui::ColorEdit3("Color", &m->baseColor.x);
+        ImGui::SliderFloat("Metallic", &m->metallic, 0.0f, 1.0f);
+        ImGui::SliderFloat("Roughness", &m->roughness, 0.0, 1.0f);
+    }
+    else
+    {
+        ImGui::TextDisabled("(default material)");
+    }
 
     ImGui::End();
 }
@@ -272,17 +280,55 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             }
             checker.CreateFromPixels(renderer, px.data(), size, size, true);
         }
+        baek::Texture bumps;                    // 256x256, 32픽셀마다 돌기 하나
+        {
+            const UINT size = 256, cell = 32;
+            std::vector<uint8_t> px(size * size * 4);
+            for (UINT y = 0; y < size; ++y)
+            {
+                for (UINT x = 0; x < size; ++x)
+                {
+                    const float dx = ((x % cell) + 0.5f) / (cell * 0.5f) - 1.0f;        // 칸 중심 기준 -1 ~ 1
+                    const float dy = ((y % cell) + 0.5f) / (cell * 0.5f) - 1.0f;       
+                    const float r2 = dx * dx + dy * dy;
+
+                    float nx = 0.0f, ny = 0.0f, nz = 1.0f;          // 돌기 밖은 평평
+                    if (r2 < 0.64f) 
+                    { 
+                        nx = dx; 
+                        ny = dy; 
+                        nz = sqrtf(1.0f-r2); 
+                    }
+
+                    uint8_t* p = &px[(y * size + x) * 4];
+                    p[0] = (uint8_t)((nx * 0.5f + 0.5f) * 255.0f);
+                    p[1] = (uint8_t)((ny * 0.5f + 0.5f) * 255.0f);
+                    p[2] = (uint8_t)((nz * 0.5f + 0.5f) * 255.0f);
+                    p[3] = 255;
+                }
+            }
+            bumps.CreateFromPixels(renderer, px.data(), size, size, false);             // 데이터 텍스처: srgb = false
+        }
         baek::Texture brick;
         brick.LoadFromFile(renderer, "Textures/brick.png", true);
-        baek::Mesh cubeMesh = baek::Mesh::CreateCube(renderer.GetDevice().Get());
 
+        baek::Mesh cubeMesh = baek::Mesh::CreateCube(renderer.GetDevice().Get());
         baek::Scene scene;
+
+        auto& brickMat = scene.CreateMaterial("Brick");
+        brickMat.albedoMap = &brick;
+        brickMat.roughness = 0.8f;
+
+        auto& bumpMat = scene.CreateMaterial("Bumpy Blue");
+        bumpMat.baseColor = { 0.30f, 0.55f, 0.90f };
+        bumpMat.albedoMap = &bumps;
+        bumpMat.roughness = 0.35f;
+
         {
             auto& e = scene.Create("Cube A");
             e.mesh = &cubeMesh;
+            e.material = &brickMat;
             e.transform.position = { 0.0f, 0.5f, 0.0f };
-            e.color = { 0.85f, 0.30f, 0.25f };
-            e.albedoMap = &brick;
         }
         {
             auto& e = scene.Create("Cube B");
@@ -290,16 +336,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             e.transform.position = { 3.0f, 1.0f, 2.0f };
             e.transform.rotation = { 0.0f, 30.0f, 0.0f };
             e.transform.scale = { 2.0f, 2.0f, 2.0f };
-            e.color = { 0.38f, 0.60f, 0.90f };
-            e.albedoMap = &brick;
+            e.material = &bumpMat;
         }
         {
             auto& e = scene.Create("Cube C");
             e.mesh = &cubeMesh;
             e.transform.position = { -3.0f, 0.25f, -1.0f };
             e.transform.scale = { 0.5f, 0.5f, 0.5f };
-            e.color = { 0.95f, 0.80f, 0.30f };
-            e.albedoMap = &brick;
+            e.material = &brickMat;                     // Cube A와 같은 머티리얼 공유
         }
 
         baek::Mesh sphereMesh = baek::Mesh::CreateSphere(device);
@@ -309,23 +353,27 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             const float rough = 0.1f + 0.2f * i;        // 0.1, 0.3, 0.5, 0.7, 0.9
             const float x = -4.0f + 2.0f * i;
 
+            auto& gold = scene.CreateMaterial("Gold " + std::to_string(i));
+            gold.baseColor = { 1.00f, 0.77f, 0.34f };
+            gold.metallic = 1.0f;
+            gold.roughness = rough;
+            gold.normalMap = &bumps;
+
+            auto& plastic = scene.CreateMaterial("Plastic " + std::to_string(i));
+            plastic.baseColor = { 0.80f, 0.10f, 0.10f };
+            plastic.roughness = rough;
+
             {
                 auto& e = scene.Create("Metal" + std::to_string(i));
                 e.mesh = &sphereMesh;
+                e.material = &gold;
                 e.transform.position = { x, 0.5f, -3.0f };
-                e.color = { 1.00f, 0.77f, 0.34f };      // gold
-                e.metallic = 1.0f;
-                e.roughness = rough;
-                e.albedoMap = &brick;
             }
             {
                 auto& e = scene.Create("Plastic" + std::to_string(i));
                 e.mesh = &sphereMesh;
+                e.material = &plastic;
                 e.transform.position = { x, 0.5f, -5.0f };
-                e.color = { 0.80f, 0.10f, 0.10f };      // gold
-                e.metallic = 0.0f;
-                e.roughness = rough;
-                e.albedoMap = &brick;
             }
 
         }

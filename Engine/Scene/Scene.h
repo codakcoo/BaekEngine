@@ -1,7 +1,9 @@
 ﻿#pragma once
 #include "Scene/Transform.h"
+#include "Renderer\Material.h"
 #include <string>
 #include <vector>
+#include <memory>
 
 namespace baek
 {
@@ -13,11 +15,8 @@ namespace baek
 		std::string name;
 		Transform transform;
 		const Mesh* mesh = nullptr;
-		DirectX::XMFLOAT3 color{ 1, 1, 1 };		// 베이스 컬러
-		float metallic = 0.0f;					// 0 = 비금속, 1 = 금속
-		float roughness = 0.5f;					// 0 = 매끈, 1 = 거침
+		Material* material = nullptr;		// 여러 엔티티가 공유 가능. 없으면 기본 머티리얼
 		bool visible = true;
-		const Texture* albedoMap = nullptr;		// 없으면 흰색 텍스처 사용
 	};
 
 	struct DirectionalLight
@@ -38,6 +37,13 @@ namespace baek
 			return mEntities.back();
 		}
 
+		Material& CreateMaterial(const std::string& name)
+		{
+			mMaterials.push_back(std::make_unique<Material>());
+			mMaterials.back()->name = name;
+			return *mMaterials.back();				// unique_ptr라서 주소가 바뀌지 않음
+		}
+
 		std::vector<Entity>& Entities() { return mEntities; }
 		const std::vector<Entity>& Entities() const { return mEntities; }
 
@@ -46,5 +52,6 @@ namespace baek
 		DirectionalLight light;
 	private:
 		std::vector<Entity> mEntities;
+		std::vector<std::unique_ptr<Material>> mMaterials;
 	};
 }

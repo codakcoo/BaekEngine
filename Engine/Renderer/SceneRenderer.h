@@ -2,6 +2,7 @@
 #include "RHI/DxUtil.h"
 #include "RHI/UploadRing.h"
 #include "Renderer/Texture.h"
+#include "Renderer/Material.h"
 #include <DirectXMath.h>
 
 namespace baek
@@ -30,7 +31,9 @@ namespace baek
 		UploadRing mCB[2];
 		
 
-		Texture mWhite;								// 텍스처가 없는 엔티티용 1x1 흰색
+		Texture mWhite;								// 텍스처가 없는 엔티티용 1x1 흰색 (albedo / metallic-roughness 기본값)
+		Texture mFlatNormal;						// normal 기본값
+		Material mDefaultMaterial;
 		ID3D12DescriptorHeap* mSrvHeap = nullptr;
 	};
 }

@@ -59,8 +59,9 @@ namespace baek
 			const int base = (int)verts.size();
 			const XMFLOAT3 ps[4] = { a, b, c, d };
 			const DirectX::XMFLOAT2 uvs[4] = { {0, 1}, {0, 0}, {1, 0}, {1, 1} };		// 좌하, 좌상, 우상, 우하
+			const DirectX::XMFLOAT4 t{ (d.x - a.x) / (2 * h), (d.y - a.y) / (2 * h), (d.z - a.z) / (2 * h), 1.0f};	// a(좌하)에서 d(우하)로 가는 방향이 U방향이다.
 			for(int k = 0; k < 4; ++k)
-				verts.push_back({ps[k], n, uvs[k], white});
+				verts.push_back({ps[k], n,  t, uvs[k], white});
 			for(int o : { 0, 1, 2, 0, 2 , 3})
 				idx.push_back((uint16_t)(base+o));
 		};
@@ -94,7 +95,8 @@ namespace baek
 			{
 				const float theta = XM_2PI * j / slices;
 				const XMFLOAT3 n{ sinf(phi) * cosf(theta), cosf(phi), sinf(phi) * sinf(theta) };
-				verts.push_back({ { n.x * r, n.y * r, n.z * r }, n, 
+				const XMFLOAT4 t{ -sinf(theta), 0.0f, cosf(theta), 1.0f };				// 경도(세타)가 증가하는 방향이 탄젠트이다.
+				verts.push_back({ { n.x * r, n.y * r, n.z * r }, n, t, 
 					{(float)j / slices, (float)i / stacks}, white});		// 구는 위치 방향이 곧 노멀
 			}
 		}

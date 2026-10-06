@@ -10,6 +10,7 @@ namespace baek
 	{
 		DirectX::XMFLOAT3 pos;
 		DirectX::XMFLOAT3 normal;
+		DirectX::XMFLOAT4 tangent;		// xyz = U가 증가하는 방향, w = 비탄젠트 부호
 		DirectX::XMFLOAT2 uv;
 		DirectX::XMFLOAT3 color;
 	};

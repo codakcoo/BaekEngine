@@ -36,19 +36,25 @@ namespace baek
 		const uint8_t whitePixel[4] = { 255, 255, 255, 255 };
 		mWhite.CreateFromPixels(renderer, whitePixel, 1, 1, true);
 
-		// Root Signature: b0 PerFrame, b1 PerObject, t0 albedo map, s0 sampler
-		CD3DX12_DESCRIPTOR_RANGE range;
-		range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+		const uint8_t flatNormal[4] = { 128, 128, 255, 255 };			// (0, 0, 1) = 요철 없음
+		mFlatNormal.CreateFromPixels(renderer, flatNormal, 1, 1, false);
+
+		// Root Signature: b0 PerFrame, b1 PerObject, t0 albedo, t1 normal, t2 metallic-roughness, s0 sampler
+		CD3DX12_DESCRIPTOR_RANGE ranges[3];
+		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
 
 		// --- Root Signature: b0 = MVP (root constants 16개) ---
-		CD3DX12_ROOT_PARAMETER params[3];
+		CD3DX12_ROOT_PARAMETER params[5];
 		params[0].InitAsConstantBufferView(0);
 		params[1].InitAsConstantBufferView(1);
-		params[2].InitAsDescriptorTable(1, &range, D3D12_SHADER_VISIBILITY_PIXEL);
+		params[2].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL);
+		params[3].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL);
+		params[4].InitAsDescriptorTable(1, &ranges[2], D3D12_SHADER_VISIBILITY_PIXEL);
 
 		CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_ANISOTROPIC);		// 기본값: WRAP, 16x
-
-		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(3, params, 1, &sampler, 
+		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(5, params, 1, &sampler, 
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 		ComPtr<ID3DBlob> sig, err;
@@ -67,10 +73,11 @@ namespace baek
 		// Input layout
 		D3D12_INPUT_ELEMENT_DESC layout[] = 
 		{
-			{ "POSITION",	0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,						D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-			{ "NORMAL",		0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, normal),D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-			{ "TEXCOORD",	0, DXGI_FORMAT_R32G32_FLOAT,	0, offsetof(Vertex, uv),	D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-			{ "COLOR",		0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof(Vertex, color), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "POSITION",	0, DXGI_FORMAT_R32G32B32_FLOAT,		0, 0,							D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "NORMAL",		0, DXGI_FORMAT_R32G32B32_FLOAT,		0, offsetof(Vertex, normal),	D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "TANGENT",	0, DXGI_FORMAT_R32G32B32A32_FLOAT,	0, offsetof(Vertex, tangent),	D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "TEXCOORD",	0, DXGI_FORMAT_R32G32_FLOAT,		0, offsetof(Vertex, uv),		D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "COLOR",		0, DXGI_FORMAT_R32G32B32_FLOAT,		0, offsetof(Vertex, color),		D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		};
 
 		// PSO
@@ -111,12 +118,12 @@ namespace baek
 			const float f = (float)i, e = (float)half;
 
 			const XMFLOAT3& cz = (i == 0) ? blue : gray;			// Z와 평행한 선 (x = i)
-			grid.push_back({ { f, 0.0f, -e }, { 0, 1, 0 }, { 0, 0 }, cz });
-			grid.push_back({ { f, 0.0f,  e }, { 0, 1, 0 }, { 0, 0 }, cz });
+			grid.push_back({ { f, 0.0f, -e }, { 0, 1, 0 }, { 1, 0, 0, 1 }, { 0, 0 }, cz});
+			grid.push_back({ { f, 0.0f,  e }, { 0, 1, 0 }, { 1, 0, 0, 1 }, { 0, 0 }, cz });
 
 			const XMFLOAT3& cx = (i == 0) ? red : gray;				// x와 평행한 선 (z = i)
-			grid.push_back({ { -e, 0.0f, f }, { 0, 1, 0 }, { 0, 0 }, cx });
-			grid.push_back({ {  e, 0.0f, f }, { 0, 1, 0 }, { 0, 0 }, cx });
+			grid.push_back({ { -e, 0.0f, f }, { 0, 1, 0 }, { 1, 0, 0, 1 }, { 0, 0 }, cx });
+			grid.push_back({ {  e, 0.0f, f }, { 0, 1, 0 }, { 1, 0, 0, 1 }, { 0, 0 }, cx });
 		}
 		mGridVertexCount = (UINT)grid.size();
 
@@ -135,7 +142,6 @@ namespace baek
 
 		ID3D12DescriptorHeap* heaps[] = { mSrvHeap };
 		cmd->SetDescriptorHeaps(1, heaps);
-		cmd->SetGraphicsRootDescriptorTable(2, mWhite.Srv());		// 기본값
 
 		// --- PerFrame ---
 		PerFrameCB pf{};
@@ -150,7 +156,7 @@ namespace baek
 
 		
 		// --- PerObject ---
-		auto setObject = [&](const XMMATRIX& world, const XMFLOAT3& color, float metallic, float roughness)
+		auto setObject = [&](const XMMATRIX& world, const Material& mat)
 		{
 			XMMATRIX w = world;
 			w.r[3] = XMVectorSet(0, 0, 0, 1);				// 노멸 변환에는 이동 성분이 필요 없음
@@ -159,13 +165,17 @@ namespace baek
 			PerObjectCB po{};
 			XMStoreFloat4x4(&po.world,						XMMatrixTranspose(world));
 			XMStoreFloat4x4(&po.worldInvTranspose,			XMMatrixTranspose(invT));
-			po.baseColor = { color.x, color.y, color.z, 1.0f };
-			po.material = { metallic, roughness, 0.0f, 0.0f };
+			po.baseColor = { mat.baseColor.x, mat.baseColor.y, mat.baseColor.z, 1.0f };
+			po.material = { mat.metallic, mat.roughness, 0.0f, 0.0f };
 			cmd->SetGraphicsRootConstantBufferView(1, cb.Alloc(&po, sizeof(po)));
+
+			cmd->SetGraphicsRootDescriptorTable(2, (mat.albedoMap ?				mat.albedoMap : &mWhite)->Srv());
+			cmd->SetGraphicsRootDescriptorTable(3, (mat.normalMap ?				mat.normalMap : &mFlatNormal)->Srv());
+			cmd->SetGraphicsRootDescriptorTable(4, (mat.metallicRoughnessMap ?	mat.metallicRoughnessMap : &mWhite)->Srv());
 		};
 		
 		// --- Grid ---
-		setObject(XMMatrixIdentity(), { 1, 1, 1 }, 0.0f, 1.0f );				// grid
+		setObject(XMMatrixIdentity(), mDefaultMaterial);				// grid
 		cmd->SetPipelineState(mLinePSO.Get());
 		cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
 		cmd->IASetVertexBuffers(0, 1, &mGridVbv);
@@ -176,8 +186,8 @@ namespace baek
 		for (const Entity& e : scene.Entities())
 		{
 			if (!e.visible || !e.mesh) continue;
-			setObject(e.transform.Matrix(), e.color, e.metallic, e.roughness);		// entity
-			cmd->SetGraphicsRootDescriptorTable(2, (e.albedoMap ? e.albedoMap : &mWhite)->Srv());
+			setObject(e.transform.Matrix(), e.material ? *e.material : mDefaultMaterial);		// entity
+			//cmd->SetGraphicsRootDescriptorTable(2, (e.albedoMap ? e.albedoMap : &mWhite)->Srv());
 			e.mesh->Draw(cmd);
 		}
 	}
@@ -187,6 +197,7 @@ namespace baek
 	{
 		for (auto& cb : mCB) cb.Shutdown();
 		mWhite.Shutdown();
+		mFlatNormal.Shutdown();
 		mPso.Reset(); mLinePSO.Reset(); mRootSig.Reset();
 	}
 }
