@@ -8,7 +8,7 @@
 #pragma warning(push, 0)          // 서드파티 헤더 경고 끄기
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
-#pragma warning(pop)S
+#pragma warning(pop)
 
 namespace baek
 {
@@ -170,12 +170,10 @@ namespace baek
 		int w = 0, h = 0, comp = 0;
 		stbi_uc* pixels = stbi_load(path.c_str(), &w, &h, &comp, 4);			// 항상 RGBA 4채널로 변환
 		if (!pixels)
-		{
 			throw std::runtime_error("Texture load failed: " + path + " (" + stbi_failure_reason() + ")");
 
-			CreateFromPixels(renderer, pixels, (UINT)w, (UINT)h, srgb);
-			stbi_image_free(pixels);
-		}
+		CreateFromPixels(renderer, pixels, (UINT)w, (UINT)h, srgb);
+		stbi_image_free(pixels);
 	}
 
 	void Texture::Shutdown()

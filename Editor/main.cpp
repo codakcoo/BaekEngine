@@ -129,7 +129,7 @@ static void DrawGizmo(baek::Camera& camera, baek::Scene& scene, bool hovered)
     }
 
     auto& ents = scene.Entities();
-    if (gSelected < 0 || gSelected > (int)ents.size()) return;
+    if (gSelected < 0 || gSelected >= (int)ents.size()) return;
     baek::Transform& t = ents[gSelected].transform;
 
     // 기즈모를 Viewport 이미지 영역에 맞춤
@@ -272,6 +272,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             }
             checker.CreateFromPixels(renderer, px.data(), size, size, true);
         }
+        baek::Texture brick;
+        brick.LoadFromFile(renderer, "Textures/brick.png", true);
         baek::Mesh cubeMesh = baek::Mesh::CreateCube(renderer.GetDevice().Get());
 
         baek::Scene scene;
@@ -280,7 +282,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             e.mesh = &cubeMesh;
             e.transform.position = { 0.0f, 0.5f, 0.0f };
             e.color = { 0.85f, 0.30f, 0.25f };
-            e.albedoMap = &checker;
+            e.albedoMap = &brick;
         }
         {
             auto& e = scene.Create("Cube B");
@@ -289,7 +291,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             e.transform.rotation = { 0.0f, 30.0f, 0.0f };
             e.transform.scale = { 2.0f, 2.0f, 2.0f };
             e.color = { 0.38f, 0.60f, 0.90f };
-            e.albedoMap = &checker;
+            e.albedoMap = &brick;
         }
         {
             auto& e = scene.Create("Cube C");
@@ -297,7 +299,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             e.transform.position = { -3.0f, 0.25f, -1.0f };
             e.transform.scale = { 0.5f, 0.5f, 0.5f };
             e.color = { 0.95f, 0.80f, 0.30f };
-            e.albedoMap = &checker;
+            e.albedoMap = &brick;
         }
 
         baek::Mesh sphereMesh = baek::Mesh::CreateSphere(device);
@@ -314,7 +316,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                 e.color = { 1.00f, 0.77f, 0.34f };      // gold
                 e.metallic = 1.0f;
                 e.roughness = rough;
-                e.albedoMap = &checker;
+                e.albedoMap = &brick;
             }
             {
                 auto& e = scene.Create("Plastic" + std::to_string(i));
@@ -323,7 +325,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                 e.color = { 0.80f, 0.10f, 0.10f };      // gold
                 e.metallic = 0.0f;
                 e.roughness = rough;
-                e.albedoMap = &checker;
+                e.albedoMap = &brick;
             }
 
         }
@@ -371,6 +373,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         cubeMesh.Shutdown();
         sphereMesh.Shutdown();
         checker.Shutdown();
+        brick.Shutdown();
         sceneRenderer.Shutdown();
         sceneRT.Shutdown();
         viewportRT.Shutdown();
