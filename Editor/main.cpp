@@ -264,7 +264,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             {
                 for (UINT x = 0; x < size; ++x)
                 {
-                    const uint8_t v = (((x/32) + (y/32))%2 == 0) ? 235 : 70;
+                    const uint8_t v = (((x/8) + (y/8))%2 == 0) ? 235 : 70;
                     uint8_t* p = &px[(y * size + x) * 4];
                     p[0] = p[1] = p[2] = v;
                     p[3] = 255;
