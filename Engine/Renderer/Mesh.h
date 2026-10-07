@@ -21,7 +21,7 @@ namespace baek
 	class Mesh
 	{
 	public:
-		void Create(ID3D12Device* device, const std::vector<Vertex>& vertices, const std::vector<uint16_t>& indices);
+		void Create(ID3D12Device* device, const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices);
 		void Draw(ID3D12GraphicsCommandList* cmd) const;
 		void Shutdown();
 

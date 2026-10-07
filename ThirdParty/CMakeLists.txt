@@ -5,6 +5,8 @@ endif()
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 set(IMGUIZMO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ImGuizmo/src)
 set(STB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/stb)
+set(CGLTF_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cgltf)
+
 
 add_library(imgui STATIC
     ${IMGUI_DIR}/imgui.cpp
@@ -25,6 +27,9 @@ endif()
 
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE ${STB_DIR}/stb)
+
+add_library(cgltf INTERFACE)
+target_include_directories(cgltf INTERFACE ${CGLTF_DIR}/cgltf)
 
 target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
 target_link_libraries(imgui PUBLIC d3d12 dxgi d3dcompiler)

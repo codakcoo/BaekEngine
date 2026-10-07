@@ -18,17 +18,17 @@ namespace baek
 		return buf;
 	}
 
-	void Mesh::Create(ID3D12Device* device, const std::vector<Vertex>& vertices, const std::vector<uint16_t>& indices)
+	void Mesh::Create(ID3D12Device* device, const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices)
 	{
 		const UINT vbBytes = (UINT)(vertices.size() * sizeof(Vertex));
-		const UINT ibBytes = (UINT)(indices.size() * sizeof(uint16_t));
+		const UINT ibBytes = (UINT)(indices.size() * sizeof(uint32_t));
 		mIndexCount = (UINT)indices.size();
 
 		mVB = CreateUploadBuffer(device, vertices.data(), vbBytes);
 		mIB = CreateUploadBuffer(device, indices.data(), ibBytes);
 
 		mVbv = { mVB->GetGPUVirtualAddress(), vbBytes, sizeof(Vertex) };
-		mIbv = { mIB->GetGPUVirtualAddress(), ibBytes, DXGI_FORMAT_R16_UINT };
+		mIbv = { mIB->GetGPUVirtualAddress(), ibBytes, DXGI_FORMAT_R32_UINT };
 	}
 
 	void Mesh::Draw(ID3D12GraphicsCommandList* cmd) const
@@ -51,7 +51,7 @@ namespace baek
 		const XMFLOAT3 white{ 1, 1, 1 };
 
 		std::vector<Vertex> verts;
-		std::vector<uint16_t> idx;
+		std::vector<uint32_t> idx;
 
 		// 정점 4개는 바깥에서 봤을 때 시계 방향 (LH 기준 앞면)
 		auto face = [&](XMFLOAT3 n, XMFLOAT3 a, XMFLOAT3 b, XMFLOAT3 c, XMFLOAT3 d)
@@ -63,7 +63,7 @@ namespace baek
 			for(int k = 0; k < 4; ++k)
 				verts.push_back({ps[k], n,  t, uvs[k], white});
 			for(int o : { 0, 1, 2, 0, 2 , 3})
-				idx.push_back((uint16_t)(base+o));
+				idx.push_back((uint32_t)(base+o));
 		};
 
 		face({ 0, 0,-1 }, { -h,-h,-h }, { -h, h,-h }, { h, h,-h }, { h,-h,-h });   // front
@@ -85,7 +85,7 @@ namespace baek
 		const XMFLOAT3 white{ 1, 1, 1 };
 
 		std::vector<Vertex> verts;
-		std::vector<uint16_t> idx;
+		std::vector<uint32_t> idx;
 
 		// 위도(stacks) x 경도(slices) 격자, 이음매 때문에 경도 항향은 slices + 1개
 		for (int i = 0; i <= stacks; ++i)
@@ -109,7 +109,7 @@ namespace baek
 				const int a = i * ring + j;
 				const int b = (i + 1) * ring + j;
 				for (int v : { a, a+1, b, b, a+1, b+1})
-					idx.push_back((uint16_t)v);
+					idx.push_back((uint32_t)v);
 			}
 		}
 

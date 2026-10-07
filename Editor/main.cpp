@@ -8,6 +8,7 @@
 #include "Renderer/Mesh.h"
 #include "Renderer\Texture.h"
 #include "Scene/Scene.h"
+#include "Asset\Model.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "ImGuizmo.h"
@@ -324,6 +325,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         bumpMat.albedoMap = &bumps;
         bumpMat.roughness = 0.35f;
 
+        baek::Model helmet;
+        helmet.Load(renderer, scene, "Models/DamagedHelmet.glb", { -3.0f, 1.5f, 3.0f });
+
+        // 큐브
         {
             auto& e = scene.Create("Cube A");
             e.mesh = &cubeMesh;
@@ -422,6 +427,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         sphereMesh.Shutdown();
         checker.Shutdown();
         brick.Shutdown();
+        helmet.Shutdown();
         sceneRenderer.Shutdown();
         sceneRT.Shutdown();
         viewportRT.Shutdown();
