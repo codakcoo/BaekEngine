@@ -1,9 +1,10 @@
 static const float PI = 3.14159265f;
 
-Texture2D       gAlbedoMap  : register(t0);
-Texture2D       gNormalMap  : register(t1);
-Texture2D       gMRMap      : register(t2);
-SamplerState    gSampler    : register(s0);
+Texture2D       gAlbedoMap      : register(t0);
+Texture2D       gNormalMap      : register(t1);
+Texture2D       gMRMap          : register(t2);
+Texture2D       gEmissiveMap    : register(t3);
+SamplerState    gSampler        : register(s0);
 
 cbuffer PerFrame : register(b0)
 {
@@ -19,6 +20,7 @@ cbuffer PerObject : register(b1)
     float4x4 gWorldInvTranspose;
     float4 gBaseColor;
     float4 gMaterial;           // x = metalllic, y = roughness
+    float4 gEmissive;           // rgb = emissive factor
 };
 
 struct VSIn
@@ -125,6 +127,7 @@ float4 PSLit(VSOut i) : SV_Target
     
     float3 direct = (diffuse + specualr) * gLightColor * NdotL;
     float3 ambient = gAmbient * albedo;                 // placeholder until IBL
+    float3 emissive = gEmissive.rgb * gEmissiveMap.Sample(gSampler, i.uv).rgb;
     
-    return float4(direct + ambient, 1.0f);
+    return float4(direct + ambient + emissive, 1.0f);
 }

@@ -116,6 +116,7 @@ static void DrawInspector(baek::Scene& scene)
         ImGui::ColorEdit3("Color", &m->baseColor.x);
         ImGui::SliderFloat("Metallic", &m->metallic, 0.0f, 1.0f);
         ImGui::SliderFloat("Roughness", &m->roughness, 0.0, 1.0f);
+        ImGui::ColorEdit3("Emissive", &m->emissive.x);
     }
     else
     {

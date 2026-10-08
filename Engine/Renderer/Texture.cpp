@@ -176,6 +176,17 @@ namespace baek
 		stbi_image_free(pixels);
 	}
 
+	void Texture::LoadFromMemory(Renderer& renderer, const uint8_t* data, size_t size, bool srgb)
+	{
+		int w = 0, h = 0, comp = 0;
+		stbi_uc* pixels = stbi_load_from_memory(data, (int)size, &w, &h, &comp, 4);
+		if(!pixels)
+			throw std::runtime_error(std::string("Texture decode failed (") + stbi_failure_reason() + ")");
+
+		CreateFromPixels(renderer, pixels, w, h, srgb);
+		stbi_image_free(pixels);
+	}
+
 	void Texture::Shutdown()
 	{
 		mTex.Reset();

@@ -12,9 +12,11 @@ namespace baek
 		DirectX::XMFLOAT3 baseColor = { 1, 1, 1 };
 		float metallic = 0.0f;
 		float roughness = 0.5f;
+		DirectX::XMFLOAT3 emissive{ 0, 0, 0 };
 
 		const Texture* albedoMap			= nullptr;		// sRGB
 		const Texture* normalMap			= nullptr;		// linear
 		const Texture* metallicRoughnessMap = nullptr;		// linear, G = roughness, B = metallic
+		const Texture* emissiveMap			= nullptr;
 	};
 }

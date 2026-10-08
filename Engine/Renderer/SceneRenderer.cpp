@@ -26,6 +26,7 @@ namespace baek
 		XMFLOAT4X4 worldInvTranspose;
 		XMFLOAT4 baseColor;
 		XMFLOAT4 material;			// x = metallic, y = roughness
+		XMFLOAT4 emissive;			// rgb = emissive factor
 	};
 
 	void SceneRenderer::Init(Renderer& renderer, DXGI_FORMAT rtvFormat, DXGI_FORMAT dsvFormat)
@@ -40,21 +41,19 @@ namespace baek
 		mFlatNormal.CreateFromPixels(renderer, flatNormal, 1, 1, false);
 
 		// Root Signature: b0 PerFrame, b1 PerObject, t0 albedo, t1 normal, t2 metallic-roughness, s0 sampler
-		CD3DX12_DESCRIPTOR_RANGE ranges[3];
-		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
-		ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
+		CD3DX12_DESCRIPTOR_RANGE ranges[4];
+		for(UINT i = 0; i < 4; ++i)
+			ranges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, i);				// t0~t3
 
 		// --- Root Signature: b0 = MVP (root constants 16개) ---
-		CD3DX12_ROOT_PARAMETER params[5];
+		CD3DX12_ROOT_PARAMETER params[6];
 		params[0].InitAsConstantBufferView(0);
 		params[1].InitAsConstantBufferView(1);
-		params[2].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL);
-		params[3].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_PIXEL);
-		params[4].InitAsDescriptorTable(1, &ranges[2], D3D12_SHADER_VISIBILITY_PIXEL);
-
+		for(UINT i = 0; i < 4; ++i)
+			params[2+i].InitAsDescriptorTable(1, &ranges[i], D3D12_SHADER_VISIBILITY_PIXEL);
+		
 		CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_ANISOTROPIC);		// 기본값: WRAP, 16x
-		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(5, params, 1, &sampler, 
+		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(6, params, 1, &sampler, 
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 		ComPtr<ID3DBlob> sig, err;
@@ -167,11 +166,13 @@ namespace baek
 			XMStoreFloat4x4(&po.worldInvTranspose,			XMMatrixTranspose(invT));
 			po.baseColor = { mat.baseColor.x, mat.baseColor.y, mat.baseColor.z, 1.0f };
 			po.material = { mat.metallic, mat.roughness, 0.0f, 0.0f };
+			po.emissive = { mat.emissive.x, mat.emissive.y, mat.emissive.z, 0.0f };
 			cmd->SetGraphicsRootConstantBufferView(1, cb.Alloc(&po, sizeof(po)));
 
 			cmd->SetGraphicsRootDescriptorTable(2, (mat.albedoMap ?				mat.albedoMap : &mWhite)->Srv());
 			cmd->SetGraphicsRootDescriptorTable(3, (mat.normalMap ?				mat.normalMap : &mFlatNormal)->Srv());
 			cmd->SetGraphicsRootDescriptorTable(4, (mat.metallicRoughnessMap ?	mat.metallicRoughnessMap : &mWhite)->Srv());
+			cmd->SetGraphicsRootDescriptorTable(5, (mat.emissiveMap ?			mat.emissiveMap : &mWhite)->Srv());
 		};
 		
 		// --- Grid ---

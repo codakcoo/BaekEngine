@@ -15,6 +15,7 @@ namespace baek
 		// rgba: width * height * 4 바이트. srgb = true면 샘플링 시 자동으로 선형 변환됨(색상 텍스처용)
 		void CreateFromPixels(Renderer& renderer, const uint8_t* rgba, UINT width, UINT height, bool srgb);
 		void LoadFromFile(Renderer& renderer, const std::string& path, bool srgb);		// PNG / JPG / TGA / BMP
+		void LoadFromMemory(Renderer& renderer, const uint8_t* data, size_t size, bool srgb);
 		void Shutdown();
 
 		D3D12_GPU_DESCRIPTOR_HANDLE Srv() const { return mSrv.gpu; }
