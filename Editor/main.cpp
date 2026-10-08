@@ -1,4 +1,5 @@
 ﻿#include "Core/Window.h"
+#include "Core/Paths.h"
 #include "Renderer/Renderer.h"
 #include "Renderer/SceneRenderer.h"
 #include "Renderer\Tonemap.h"
@@ -311,7 +312,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             bumps.CreateFromPixels(renderer, px.data(), size, size, false);             // 데이터 텍스처: srgb = false
         }
         baek::Texture brick;
-        brick.LoadFromFile(renderer, "Textures/brick.png", true);
+        brick.LoadFromFile(renderer, baek::AssetPath("Textures/brick.png"), true);
 
         baek::Mesh cubeMesh = baek::Mesh::CreateCube(renderer.GetDevice().Get());
         baek::Scene scene;
@@ -326,7 +327,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         bumpMat.roughness = 0.35f;
 
         baek::Model helmet;
-        helmet.Load(renderer, scene, "Models/DamagedHelmet.glb", { -3.0f, 1.5f, 3.0f });
+        helmet.Load(renderer, scene, baek::AssetPath("Models/DamagedHelmet.glb"), { -3.0f, 1.5f, 3.0f });
 
         // 큐브
         {
