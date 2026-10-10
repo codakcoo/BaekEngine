@@ -4,6 +4,7 @@ Texture2D       gAlbedoMap      : register(t0);
 Texture2D       gNormalMap      : register(t1);
 Texture2D       gMRMap          : register(t2);
 Texture2D       gEmissiveMap    : register(t3);
+TextureCube     gIrradianceMap : register(t4);
 SamplerState    gSampler        : register(s0);
 
 cbuffer PerFrame : register(b0)
@@ -89,6 +90,12 @@ float3 F_Schlick(float VdotH, float3 F0)
     return F0 + (1.0f - F0) * pow(saturate(1.0f - VdotH), 5.0f);
 }
 
+// Fresnel for ambient light: rough surfaces reflect less at grazing angles
+float3 F_SchilckRoughness(float NdotV, float3 F0, float roughness)
+{
+    return F0 + (max((1.0f - roughness).xxx, F0) - F0) * pow(saturate(1.0f - NdotV), 5.0f);
+}
+
 float4 PSLit(VSOut i) : SV_Target
 {
     float3 albedo = i.color * gAlbedoMap.Sample(gSampler, i.uv).rgb;
@@ -126,7 +133,11 @@ float4 PSLit(VSOut i) : SV_Target
     float3 diffuse = kD * albedo / PI;
     
     float3 direct = (diffuse + specualr) * gLightColor * NdotL;
-    float3 ambient = gAmbient * albedo;                 // placeholder until IBL
+    
+    float3 irradiance = gIrradianceMap.SampleLevel(gSampler, N, 0).rgb;
+    float3 ks_amb = F_SchilckRoughness(NdotV, F0, roughness);
+    float3 kD_amb = (1.0f - ks_amb) * (1.0f - metallic);
+    float3 ambient = kD_amb * irradiance * albedo * gAmbient;           // gAmblient = IBL intensity
     float3 emissive = gEmissive.rgb * gEmissiveMap.Sample(gSampler, i.uv).rgb;
     
     return float4(direct + ambient + emissive, 1.0f);

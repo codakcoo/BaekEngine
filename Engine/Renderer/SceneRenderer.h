@@ -18,6 +18,7 @@ namespace baek
 		void Render(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Camera& camera, const Scene& scene);
 		void Shutdown();
 		
+		void SetIrradiance(D3D12_GPU_DESCRIPTOR_HANDLE srv) { mIrradianceSrv = srv; }
 	private:
 		ComPtr<ID3D12RootSignature> mRootSig;
 		ComPtr<ID3D12PipelineState> mPso;
@@ -35,5 +36,7 @@ namespace baek
 		Texture mFlatNormal;						// normal 기본값
 		Material mDefaultMaterial;
 		ID3D12DescriptorHeap* mSrvHeap = nullptr;
+
+		D3D12_GPU_DESCRIPTOR_HANDLE mIrradianceSrv{};
 	};
 }

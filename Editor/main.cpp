@@ -9,6 +9,7 @@
 #include "Renderer/Mesh.h"
 #include "Renderer\Texture.h"
 #include "Renderer\SkyPass.h"
+#include "Renderer\IBL.h"
 #include "Scene/Scene.h"
 #include "Asset\Model.h"
 #include "imgui.h"
@@ -207,9 +208,9 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scen
     ImGui::DragFloat3("Direction", &scene.light.direction.x, 0.01f, -1.0f, 1.0f);
     ImGui::ColorEdit3("Light Color", &scene.light.color.x);
     ImGui::SliderFloat("Intensity", &scene.light.intensity, 0.0f, 5.0f);
-    ImGui::SliderFloat("Ambient", &scene.light.ambient, 0.0f, 1.0f);
     ImGui::SliderFloat("Exposure", &gExposure, 0.1f, 5.0f);
     ImGui::SliderFloat("Sky Intensity", &gSkyIntensity, 0.0f, 5.0f);
+    ImGui::SliderFloat("IBL Intensity", &scene.light.iblIntensity, 0.0f, 3.0f);
     ImGui::End();
 
     // 계층, 도구 그리기
@@ -272,6 +273,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
         baek::Texture envMap;
         envMap.LoadHDR(renderer, baek::AssetPath("HDRI/sky.hdr"));
+
+        baek::IBL ibl;
+        ibl.Init(renderer, envMap);
+        sceneRenderer.SetIrradiance(ibl.IrradianceSrv());
 
         baek::SkyPass sky;
         sky.Init(device, DXGI_FORMAT_R16G16B16A16_FLOAT, baek::RenderTarget::DepthFormat);
@@ -421,7 +426,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             // 1) 씬 -> HDR
             sceneRT.Begin(cmd);
             sceneRenderer.Render(cmd, renderer.FrameIndex(), camera, scene);
-            sky.Render(cmd, renderer.SrvHeap().Get(), envMap.Srv(), camera, gSkyIntensity);
+            sky.Render(cmd, renderer.SrvHeap().Get(), ibl.EnvCubeSrv(), camera, gSkyIntensity);
             sceneRT.End(cmd);
 
             // 2) HDR -> 톤매핑 -> LDR
@@ -437,6 +442,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         renderer.WaitIdle();                        // GPU가 ImGui 리소스를 다 쓴 뒤에
         cubeMesh.Shutdown();
         sky.Shutdown();
+        ibl.Shutdown();
         envMap.Shutdown();
         sphereMesh.Shutdown();
         checker.Shutdown();

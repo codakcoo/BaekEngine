@@ -3,5 +3,5 @@ root = true
 [*.{h,hpp,cpp,txt,json}]
 charset = utf-8-bom
 
-[*.hlsl]
+[*.hlsl, hlsli]
 charset = utf-8

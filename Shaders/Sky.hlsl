@@ -5,7 +5,7 @@ cbuffer SkyCB : register(b0)
     float3      _pad;
 };
 
-Texture2D       gEnvMap : register(t0);
+TextureCube     gEnvMap : register(t0);
 SamplerState    gSampler : register(s0);
 
 static const float PI = 3.14159265f;
@@ -27,21 +27,12 @@ VSOut VSMain(uint id : SV_VertexID)
     return o;
 }
 
-// World direction -> equirectangular UV
-float2 DirToEquirect(float3 d)
-{
-    float u = 0.5f - atan2(d.z, d.x) / (2.0f * PI);
-    float v = acos(clamp(d.y, -1.0f, 1.0f)) /  PI;      // 0 = straight up, 1= straight down
-    
-    return float2(u, v);
-}
-
 float4 PSMain(VSOut i) : SV_Target
 {
     float4 world = mul(float4(i.ndc, 1.0, 1.0f), gInvViewProj);
     float3 dir = normalize(world.xyz / world.w);
     
-    float3 c = gEnvMap.SampleLevel(gSampler, DirToEquirect(dir), 0).rgb * gSkyIntensity;
+    float3 c = gEnvMap.SampleLevel(gSampler, dir, 0).rgb * gSkyIntensity;
     
     return float4(c, 1.0f);
 }

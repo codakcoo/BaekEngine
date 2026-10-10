@@ -24,7 +24,7 @@ namespace baek
 		DirectX::XMFLOAT3 direction{ 0.4f, -1.0f, 0.6f };			// 빛이 진행하는 방향
 		DirectX::XMFLOAT3 color{ 1, 1, 1};
 		float intensity = 3.0f;
-		float ambient = 0.15f;
+		float iblIntensity = 1.0f;
 	};
 
 	class Scene

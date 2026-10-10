@@ -202,8 +202,9 @@ namespace baek
 					cmd->CopyTextureRegion(&dstLoc, 0, 0, 0, &srvLoc, nullptr);
 				}
 
+				// 컴퓨트 셰이더가 읽기 위해서 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE 추가
 				auto b = CD3DX12_RESOURCE_BARRIER::Transition(mTex.Get(),
-					D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);		// 모든 서브리소스
+					D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);		
 				cmd->ResourceBarrier(1, &b);
 			});
 
