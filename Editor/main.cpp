@@ -8,6 +8,7 @@
 #include "Scene/Camera.h"
 #include "Renderer/Mesh.h"
 #include "Renderer\Texture.h"
+#include "Renderer\SkyPass.h"
 #include "Scene/Scene.h"
 #include "Asset\Model.h"
 #include "imgui.h"
@@ -27,6 +28,7 @@ UINT vpReqW = 1200, vpReqH = 720;       // UI가 요청한 크기
 static int gSelected = -1;                  // 선택된 엔티티 인덱스 (-1 = 없음)
 static ImGuizmo::OPERATION gGizmoOp = ImGuizmo::TRANSLATE;
 static float gExposure = 1.0f;
+static float gSkyIntensity = 1.0f;
 
 static void UpdateCameraInput(baek::Camera& cam, bool hovered)
 {
@@ -207,6 +209,7 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scen
     ImGui::SliderFloat("Intensity", &scene.light.intensity, 0.0f, 5.0f);
     ImGui::SliderFloat("Ambient", &scene.light.ambient, 0.0f, 1.0f);
     ImGui::SliderFloat("Exposure", &gExposure, 0.1f, 5.0f);
+    ImGui::SliderFloat("Sky Intensity", &gSkyIntensity, 0.0f, 5.0f);
     ImGui::End();
 
     // 계층, 도구 그리기
@@ -266,6 +269,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
         baek::SceneRenderer sceneRenderer;
         sceneRenderer.Init(renderer, DXGI_FORMAT_R16G16B16A16_FLOAT, baek::RenderTarget::DepthFormat);
+
+        baek::Texture envMap;
+        envMap.LoadHDR(renderer, baek::AssetPath("HDRI/sky.hdr"));
+
+        baek::SkyPass sky;
+        sky.Init(device, DXGI_FORMAT_R16G16B16A16_FLOAT, baek::RenderTarget::DepthFormat);
 
         baek::Texture checker;                  // 체커보드 텍스처 (256x256, 32픽셀 칸)
         {
@@ -412,6 +421,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             // 1) 씬 -> HDR
             sceneRT.Begin(cmd);
             sceneRenderer.Render(cmd, renderer.FrameIndex(), camera, scene);
+            sky.Render(cmd, renderer.SrvHeap().Get(), envMap.Srv(), camera, gSkyIntensity);
             sceneRT.End(cmd);
 
             // 2) HDR -> 톤매핑 -> LDR
@@ -426,6 +436,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
         renderer.WaitIdle();                        // GPU가 ImGui 리소스를 다 쓴 뒤에
         cubeMesh.Shutdown();
+        sky.Shutdown();
+        envMap.Shutdown();
         sphereMesh.Shutdown();
         checker.Shutdown();
         brick.Shutdown();

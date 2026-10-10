@@ -104,65 +104,12 @@ namespace baek
 
 	void Texture::CreateFromPixels(Renderer& renderer, const uint8_t* rgba, UINT width, UINT height, bool srgb)
 	{
-		ID3D12Device* device = renderer.GetDevice().Get();
-		mWidth = width; mHeight = height;
+		const std::vector<MipLevel> chain = BuildMipChain(rgba, width, height, srgb);
 
-		const std::vector<MipLevel> mips = BuildMipChain(rgba, width, height, srgb);
-		const UINT mipCount = (UINT)mips.size();
-
-		const DXGI_FORMAT format = srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
-		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(format, width, height, 1, (UINT16)mipCount);
-
-		// 1) 최종 텍스처 (DEFAULT 힙, 복사 대상 상태로 시작)
-		CD3DX12_HEAP_PROPERTIES defaultHeap(D3D12_HEAP_TYPE_DEFAULT);
-		ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &desc,
-			D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&mTex)));
-
-		// 2) 모든 밉 레벨의 배치 정보를 한 번에 조회
-		std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> fps{mipCount};
-		UINT64 uploadBytes = 0;
-		device->GetCopyableFootprints(&desc, 0, mipCount, 0, fps.data(), nullptr, nullptr, &uploadBytes);
-
-		CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
-		auto bufDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBytes);
-		ComPtr<ID3D12Resource> upload;
-		ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &bufDesc,
-			D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)));
-
-		// 3) 한 줄씩 복사 (RowPitch가 width * 4보다 클 수 있어서 통째로 memcpy하면 안 됨)
-		uint8_t* dst = nullptr;
-		CD3DX12_RANGE noRead(0, 0);
-		ThrowIfFailed(upload->Map(0, &noRead, reinterpret_cast<void**>(&dst)));
-		for (UINT m = 0; m < mipCount; ++m)
-		{
-			const MipLevel& mip = mips[m];
-			const auto& fp = fps[m];
-			for(UINT y= 0; y < mip.height; ++y)
-				memcpy(dst + fp.Offset + (size_t)y * fp.Footprint.RowPitch, 
-					mip.pixels.data() + (size_t)y * mip.width * 4, 
-					(size_t)mip.width * 4);
-		}
-		upload->Unmap(0, nullptr);
-
-		// 4) 레벨마다 복사 명령, 마지막에 전체 상태 전환
-		renderer.Immediate([&](ID3D12GraphicsCommandList* cmd)
-		{
-			for (UINT m = 0; m < mipCount; ++m)
-			{
-				CD3DX12_TEXTURE_COPY_LOCATION dstLoc(mTex.Get(), m);				// 서브리소스 인덱스 = 밉레벨
-				CD3DX12_TEXTURE_COPY_LOCATION srvLoc(upload.Get(), fps[m]);
-				cmd->CopyTextureRegion(&dstLoc, 0, 0, 0, &srvLoc, nullptr);
-			}
-
-			auto b = CD3DX12_RESOURCE_BARRIER::Transition(mTex.Get(),
-				D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);		// 모든 서브리소스
-			cmd->ResourceBarrier(1, &b);
-		});
-
-		// 5) SRV (desc를 nullptr로 주면 모든 밉 레벨을 포함)
-		mSrvHeap = &renderer.SrvHeap();
-		mSrv = mSrvHeap->Allocate();
-		device->CreateShaderResourceView(mTex.Get(), nullptr, mSrv.cpu);
+		std::vector<MipData> mips;
+		for (const MipLevel& m : chain)
+			mips.push_back({ m.width, m.height, m.pixels.data()});
+		CreateInternal(renderer, srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM, 4, mips);
 	}
 
 	void Texture::LoadFromFile(Renderer& renderer, const std::string& path, bool srgb)
@@ -173,6 +120,17 @@ namespace baek
 			throw std::runtime_error("Texture load failed: " + path + " (" + stbi_failure_reason() + ")");
 
 		CreateFromPixels(renderer, pixels, (UINT)w, (UINT)h, srgb);
+		stbi_image_free(pixels);
+	}
+
+	void Texture::LoadHDR(Renderer& renderer, const std::string& path)
+	{
+		int w = 0, h = 0, comp = 0;
+		float* pixels = stbi_loadf(path.c_str(), &w, &h, &comp, 4);				// 선형 float RGBA (알파 = 1)
+		if(!pixels)
+			throw std::runtime_error("HDR load failed: " + path + " (" + stbi_failure_reason() + ")");
+
+		CreateInternal(renderer, DXGI_FORMAT_R32G32B32A32_FLOAT, 16, {{ (UINT)w, (UINT)h, reinterpret_cast<const uint8_t*>(pixels)}});
 		stbi_image_free(pixels);
 	}
 
@@ -192,5 +150,66 @@ namespace baek
 		mTex.Reset();
 		if(mSrvHeap) mSrvHeap->Free(mSrv);
 		mSrvHeap = nullptr;
+	}
+
+	void Texture::CreateInternal(Renderer& renderer, DXGI_FORMAT format, UINT bytesPerPixel, const std::vector<MipData>& mips)
+	{
+		ID3D12Device* device = renderer.GetDevice().Get();
+		const UINT mipCount = (UINT)mips.size();
+		mWidth = mips[0].width; 
+		mHeight = mips[0].height;
+
+
+		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(format, mWidth, mHeight, 1, (UINT16)mipCount);
+
+		// 1) 최종 텍스처 (DEFAULT 힙, 복사 대상 상태로 시작)
+		CD3DX12_HEAP_PROPERTIES defaultHeap(D3D12_HEAP_TYPE_DEFAULT);
+		ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &desc,
+			D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&mTex)));
+
+		// 2) 모든 밉 레벨의 배치 정보를 한 번에 조회
+		std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> fps{ mipCount };
+		UINT64 uploadBytes = 0;
+		device->GetCopyableFootprints(&desc, 0, mipCount, 0, fps.data(), nullptr, nullptr, &uploadBytes);
+
+		CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
+		auto bufDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBytes);
+		ComPtr<ID3D12Resource> upload;
+		ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &bufDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)));
+
+		// 3) 한 줄씩 복사 (RowPitch가 width * 4보다 클 수 있어서 통째로 memcpy하면 안 됨)
+		uint8_t* dst = nullptr;
+		CD3DX12_RANGE noRead(0, 0);
+		ThrowIfFailed(upload->Map(0, &noRead, reinterpret_cast<void**>(&dst)));
+		for (UINT m = 0; m < mipCount; ++m)
+		{
+			const MipData& mip = mips[m];
+			const size_t rowBytes = (size_t)mip.width * bytesPerPixel;
+			for (UINT y = 0; y < mip.height; ++y)
+				memcpy(dst + fps[m].Offset + (size_t)y * fps[m].Footprint.RowPitch,
+					mip.pixels + (size_t)y * rowBytes, rowBytes);
+		}
+		upload->Unmap(0, nullptr);
+
+		// 4) 레벨마다 복사 명령, 마지막에 전체 상태 전환
+		renderer.Immediate([&](ID3D12GraphicsCommandList* cmd)
+			{
+				for (UINT m = 0; m < mipCount; ++m)
+				{
+					CD3DX12_TEXTURE_COPY_LOCATION dstLoc(mTex.Get(), m);				// 서브리소스 인덱스 = 밉레벨
+					CD3DX12_TEXTURE_COPY_LOCATION srvLoc(upload.Get(), fps[m]);
+					cmd->CopyTextureRegion(&dstLoc, 0, 0, 0, &srvLoc, nullptr);
+				}
+
+				auto b = CD3DX12_RESOURCE_BARRIER::Transition(mTex.Get(),
+					D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);		// 모든 서브리소스
+				cmd->ResourceBarrier(1, &b);
+			});
+
+		// 5) SRV (desc를 nullptr로 주면 모든 밉 레벨을 포함)
+		mSrvHeap = &renderer.SrvHeap();
+		mSrv = mSrvHeap->Allocate();
+		device->CreateShaderResourceView(mTex.Get(), nullptr, mSrv.cpu);
 	}
 }
