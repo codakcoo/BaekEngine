@@ -18,7 +18,8 @@ namespace baek
 		void Render(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Camera& camera, const Scene& scene);
 		void Shutdown();
 		
-		void SetIrradiance(D3D12_GPU_DESCRIPTOR_HANDLE srv) { mIrradianceSrv = srv; }
+		void SetIBL(D3D12_GPU_DESCRIPTOR_HANDLE irradiance, D3D12_GPU_DESCRIPTOR_HANDLE prefiltered, D3D12_GPU_DESCRIPTOR_HANDLE brdfLut) 
+		{ mIrradianceSrv = irradiance; mPrefilteredSrv = prefiltered; mBrdfLutSrv = brdfLut; }
 	private:
 		ComPtr<ID3D12RootSignature> mRootSig;
 		ComPtr<ID3D12PipelineState> mPso;
@@ -37,6 +38,6 @@ namespace baek
 		Material mDefaultMaterial;
 		ID3D12DescriptorHeap* mSrvHeap = nullptr;
 
-		D3D12_GPU_DESCRIPTOR_HANDLE mIrradianceSrv{};
+		D3D12_GPU_DESCRIPTOR_HANDLE mIrradianceSrv{}, mPrefilteredSrv{}, mBrdfLutSrv;
 	};
 }

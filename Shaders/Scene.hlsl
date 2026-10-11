@@ -1,11 +1,15 @@
 static const float PI = 3.14159265f;
+static const float kPrefilterMaxLod = 4.0f;         // = prefilterMips - 1 (c++ 쪽과 맞출 것)
 
 Texture2D       gAlbedoMap      : register(t0);
 Texture2D       gNormalMap      : register(t1);
 Texture2D       gMRMap          : register(t2);
 Texture2D       gEmissiveMap    : register(t3);
-TextureCube     gIrradianceMap : register(t4);
+TextureCube     gIrradianceMap  : register(t4);
+TextureCube     gPrefilterMap   : register(t5);
+Texture2D       gBrdfLut        : register(t6);
 SamplerState    gSampler        : register(s0);
+SamplerState    gClampSampler   : register(s1);
 
 cbuffer PerFrame : register(b0)
 {
@@ -134,10 +138,21 @@ float4 PSLit(VSOut i) : SV_Target
     
     float3 direct = (diffuse + specualr) * gLightColor * NdotL;
     
-    float3 irradiance = gIrradianceMap.SampleLevel(gSampler, N, 0).rgb;
+    // Image-based lighting
     float3 ks_amb = F_SchilckRoughness(NdotV, F0, roughness);
     float3 kD_amb = (1.0f - ks_amb) * (1.0f - metallic);
-    float3 ambient = kD_amb * irradiance * albedo * gAmbient;           // gAmblient = IBL intensity
+    
+    // Diffuse: irradiance around N
+    float3 irradiance = gIrradianceMap.SampleLevel(gSampler, N, 0).rgb;
+    float3 diffuseIBL = kD_amb * irradiance * albedo;
+    
+    // Specular: blurred enviornment along the reflection, scaled by the BRDF LUT
+    float3 R = reflect(-V, N);
+    float3 prefiltered = gPrefilterMap.SampleLevel(gSampler, R, roughness * kPrefilterMaxLod).rgb;
+    float2 brdf = gBrdfLut.SampleLevel(gClampSampler, float2(NdotV, roughness), 0).rg;
+    float3 specularIBL = prefiltered * (ks_amb * brdf.x + brdf.y);
+    
+    float3 ambient = (diffuseIBL + specularIBL) * gAmbient;
     float3 emissive = gEmissive.rgb * gEmissiveMap.Sample(gSampler, i.uv).rgb;
     
     return float4(direct + ambient + emissive, 1.0f);

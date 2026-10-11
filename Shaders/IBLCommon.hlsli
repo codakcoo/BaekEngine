@@ -4,13 +4,15 @@
 cbuffer Params : register(b0)
 {
     uint gSize;                                 // output face size in texels
+    float gRoughness;                           // prefilter pass only
     uint3 _pad;
 };
 
 SamplerState                gSampler : register(s0);
 RWTexture2DArray<float4>    gOut : register(u0);           // 6 slices = À°¸éÃ¼
 
-static const float PI = 3.14159265f;
+#define PI 3.14159265f
+
 
 // Cube face texel -> world direction (D3D cube mapconvention: +X, -X, +Y, -Y, +Z, -Z)
 float3 CubeDir(uint3 id)

@@ -1,7 +1,8 @@
-#include "IBL.h"
+ï»¿#include "IBL.h"
 #include "Renderer\Renderer.h"
 #include "Renderer\Texture.h"
 #include "RHI/Shader.h"
+#include <algorithm>
 
 namespace baek
 {
@@ -25,15 +26,17 @@ namespace baek
 		}
 	}
 
-	void IBL::Init(Renderer& renderer, const Texture& equirect, UINT envSize, UINT irradianceSize)
+	void IBL::Init(Renderer& renderer, const Texture& equirect,
+		UINT envSize, UINT irradianceSize,
+		UINT prefilterSize, UINT prefilterMips, UINT lutSize)
 	{
 		ID3D12Device* device = renderer.GetDevice().Get();
 		mHeap = &renderer.SrvHeap();
 
-		// --- Root signature (¸ğµç IBL ÄÄÇ»Æ® ÆĞ½º °ø¿ë) ---
+		// --- Root signature (ëª¨ë“  IBL ì»´í“¨íŠ¸ íŒ¨ìŠ¤ ê³µìš©) ---
 		// b0 = size,
-		// t0 = ÀÔ·Â ÅØ½ºÃ³,
-		// s0 = ¼±Çü »ùÇÃ·¯
+		// t0 = ì…ë ¥ í…ìŠ¤ì²˜,
+		// s0 = ì„ í˜• ìƒ˜í”ŒëŸ¬
 		CD3DX12_DESCRIPTOR_RANGE srvRange, uavRange;
 		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 		uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
@@ -57,82 +60,136 @@ namespace baek
 
 		mEquirectPso = CreateComputePso(device, mRootSig.Get(), L"EquirectToCube.hlsl");
 		mIrradiancePso = CreateComputePso(device, mRootSig.Get(), L"Irradiance.hlsl");
+		mPrefilterPso = CreateComputePso(device, mRootSig.Get(), L"Prefilter.hlsl");
+		mLutPso = CreateComputePso(device, mRootSig.Get(), L"BrdfLut.hlsl");
 
-		// --- Ãâ·Â Å¥ºê¸Ê ---
-		CreateCube(device, envSize, kCubeFormat, mEnv, L"IBL_EnvCube");
-		CreateCube(device, irradianceSize, kCubeFormat, mIrradiance, L"IBL_Irradiance");
+		// --- ì¶œë ¥ íë¸Œë§µ ---
+		CreateCube(device, envSize, 1, kCubeFormat, mEnv, L"IBL_EnvCube");
+		CreateCube(device, irradianceSize, 1, kCubeFormat, mIrradiance, L"IBL_Irradiance");
+		CreateCube(device, prefilterSize, prefilterMips, kCubeFormat, mPrefiltered, L"IBL_Prefiltered");
 
-		// --- °è»ê (ÇÑ ¹ø¸¸) ---
+		// BRDF LUT (2D, 2ì±„ë„)
+		{
+			const DXGI_FORMAT fmt = DXGI_FORMAT_R16G16_FLOAT;
+			mLut.size = lutSize;
+			auto desc = CD3DX12_RESOURCE_DESC::Tex2D(fmt, lutSize, lutSize, 1, 1, 1, 0,
+				D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+			CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
+			ThrowIfFailed(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
+				D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&mLut.res)));
+			mLut.res->SetName(L"IBL_BrdfLut");
+
+			mLut.srv = mHeap->Allocate();
+			device->CreateShaderResourceView(mLut.res.Get(), nullptr, mLut.srv.cpu);
+			mLut.uav = mHeap->Allocate();
+			device->CreateUnorderedAccessView(mLut.res.Get(), nullptr, nullptr, mLut.uav.cpu);
+		}
+
+		// --- ê³„ì‚° (í•œ ë²ˆë§Œ) ---
 		renderer.Immediate([&](ID3D12GraphicsCommandList* cmd)
 		{
 			ID3D12DescriptorHeap* heaps[] = { mHeap->Get() };
 			cmd->SetDescriptorHeaps(1, heaps);
 			cmd->SetComputeRootSignature(mRootSig.Get());
 
-			auto dispatch = [&](ID3D12PipelineState* pso, D3D12_GPU_DESCRIPTOR_HANDLE input, const Cube& out)
+			auto run = [&](ID3D12PipelineState* pso, D3D12_GPU_DESCRIPTOR_HANDLE input, D3D12_GPU_DESCRIPTOR_HANDLE output,
+							UINT size, float roughness, UINT faces)
 			{
-				const UINT params[4] = { out.size, 0, 0, 0 };
+				struct { UINT size; float roughness; UINT pad[2]; } p{ size, roughness, { 0, 0 } };
 				cmd->SetPipelineState(pso);
-				cmd->SetComputeRoot32BitConstants(0, 4, params, 0);
+				cmd->SetComputeRoot32BitConstants(0, 4, &p, 0);
 				cmd->SetComputeRootDescriptorTable(1, input);
-				cmd->SetComputeRootDescriptorTable(2, out.uav.gpu);
+				cmd->SetComputeRootDescriptorTable(2, output);
+				const UINT groups = (size + 7) / 8;			// numthreads(8, 8, 1)
+				cmd->Dispatch(groups, groups, faces);				
 
-				const UINT groups = (out.size + 7) / 8;			// numthreads(8, 8, 1)
-				cmd->Dispatch(groups, groups, 6);				// z = 6¸éÃ¼
-
-				// ¾²±â ³¡ -> ´ÙÀ½ ÆĞ½º¿Í ·»´õ¸µ¿¡¼­ ÀĞÀ» ¼ö ÀÖ°Ô
-				auto b = CD3DX12_RESOURCE_BARRIER::Transition(out.res.Get(),
-					D3D12_RESOURCE_STATE_UNORDERED_ACCESS, kReadState);
+			};
+			// ì“°ê¸° ë -> ë‹¤ìŒ íŒ¨ìŠ¤ì™€ ë Œë”ë§ì—ì„œ ì½ì„ ìˆ˜ ìˆê²Œ
+			auto toRead = [&](ID3D12Resource* res)
+			{
+				auto b = CD3DX12_RESOURCE_BARRIER::Transition(res, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, kReadState);
 				cmd->ResourceBarrier(1, &b);
 			};
 
-			dispatch(mEquirectPso.Get(), equirect.Srv(), mEnv);				// ÆÄ³ë¶ó¸¶ -> È¯°æ Å¥ºê¸Ê
-			dispatch(mIrradiancePso.Get(), mEnv.srv.gpu, mIrradiance);		// È¯°æ Å¥ºê¸Ê -> irradiance
+			// 1) íŒŒë…¸ë¼ë§ˆ -> í™˜ê²½ íë¸Œë§µ
+			run(mEquirectPso.Get(), equirect.Srv(), mEnv.uavs[0].gpu, mEnv.size, 0.0f, 6);
+			toRead(mEnv.res.Get());
+
+			// 2) ë‚œë°˜ì‚¬: irradiance
+			run(mIrradiancePso.Get(), mEnv.srv.gpu, mIrradiance.uavs[0].gpu, mIrradiance.size, 0.0f, 6);
+			toRead(mIrradiance.res.Get());
+
+			// 3) ì •ë°˜ì‚¬: ë°‰ ë ˆë²¨ë§ˆë‹¤ ê±°ì¹ ê¸°ë¥¼ ì˜¬ë ¤ ê°€ë©° prefilter
+			for (UINT m = 0; m < mPrefiltered.mips; ++m)
+			{
+				const UINT size = std::max(1u, mPrefiltered.size >> m);
+				const float roughness = (float)m / (float)(mPrefiltered.mips - 1);		// 0, 0.25, 0.5, 0.75, 1
+				run(mPrefilterPso.Get(), mEnv.srv.gpu, mPrefiltered.uavs[m].gpu, size, roughness, 6);
+			}
+			toRead(mPrefiltered.res.Get());
+
+			// 4) BRDF LUT (í™˜ê²½ê³¼ ë¬´ê´€, í•œ ë²ˆë§Œ ê³„ì‚°í•˜ë©´ ë¨)
+			run(mLutPso.Get(), mEnv.srv.gpu, mLut.uav.gpu, mLut.size, 0.0f, 1);
+			toRead(mLut.res.Get());
 		});
 	}
+
 	void IBL::Shutdown()
 	{
 		FreeCube(mEnv);
 		FreeCube(mIrradiance);
-		mEquirectPso.Reset(); mIrradiancePso.Reset(); mRootSig.Reset();
+		FreeCube(mPrefiltered);
+
+		mLut.res.Reset();
+		if (mHeap)
+		{
+			mHeap->Free(mLut.srv);
+			mHeap->Free(mLut.uav);
+		}
+		mEquirectPso.Reset(); mIrradiancePso.Reset(); mPrefilterPso.Reset(); mLutPso.Reset(); 
+		mRootSig.Reset();
 		mHeap = nullptr;
 	}
 
-	void IBL::CreateCube(ID3D12Device* device, UINT size, DXGI_FORMAT format, Cube& out, const wchar_t* name)
+	void IBL::CreateCube(ID3D12Device* device, UINT size, UINT mips, DXGI_FORMAT format, Cube& out, const wchar_t* name)
 	{
 		out.size = size;
+		out.mips = mips;
 
-		// 6ÀåÂ¥¸® ÅØ½ºÃ³ ¹è¿­ = Å¥ºê¸Ê. ÄÄÇ»Æ® ¼ÎÀÌ´õ°¡ ¾µ ¼ö ÀÖ°Ô UAV Çã¿ë
-		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(format, size, size, 6, 1, 1, 0,
+		// 6ì¥ì§œë¦¬ í…ìŠ¤ì²˜ ë°°ì—´ = íë¸Œë§µ. ì»´í“¨íŠ¸ ì…°ì´ë”ê°€ ì“¸ ìˆ˜ ìˆê²Œ UAV í—ˆìš©
+		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(format, size, size, 6, (UINT16)mips, 1, 0,
 			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 		CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
 		ThrowIfFailed(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&out.res)));
 		out.res->SetName(name);
 
-		// ÀĞÀ» ¶§: Å¥ºê¸ÊÀ¸·Î ÇØ¼® (¹æÇâ º¤ÅÍ·Î »ùÇÃ¸µ)
+		// ì½ì„ ë•Œ: íë¸Œë§µìœ¼ë¡œ í•´ì„ (ë°©í–¥ ë²¡í„°ë¡œ ìƒ˜í”Œë§)
 		D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
 		srv.Format = format;
 		srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
 		srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srv.TextureCube.MipLevels = 1;
+		srv.TextureCube.MipLevels = mips;						// ëª¨ë“  ë°‰ì„ ì½ì„ ìˆ˜ ìˆê²Œ
 		out.srv = mHeap->Allocate();
 		device->CreateShaderResourceView(out.res.Get(), &srv, out.srv.cpu);
 
-		// ¾µ ¶§: 2D ¹è¿­·Î ÇØ¼® (¸é ¹øÈ£ = ¹è¿­ ÀÎµ¦½º)
-		D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
-		uav.Format = format;
-		uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
-		uav.Texture2DArray.ArraySize = 6;				// À°¸éÃ¼
-		out.uav = mHeap->Allocate();
-		device->CreateUnorderedAccessView(out.res.Get(), nullptr, &uav, out.uav.cpu);
+		for (UINT m = 0; m < mips; ++m)						// ë°‰ë§ˆë‹¤ ë”°ë¡œ ì“°ê¸°
+		{
+			D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
+			uav.Format = format;
+			uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
+			uav.Texture2DArray.MipSlice = m;
+			uav.Texture2DArray.ArraySize = 6;				// ìœ¡ë©´ì²´
+			DescriptorHandle h = mHeap->Allocate();
+			device->CreateUnorderedAccessView(out.res.Get(), nullptr, &uav, h.cpu);
+			out.uavs.push_back(h);
+		}
 	}
 	void IBL::FreeCube(Cube& c)
 	{
 		c.res.Reset();
-		if (mHeap)
-		{
-			mHeap->Free(c.srv);
-			mHeap->Free(c.uav);
-		}
+		if (!mHeap) return;
+		mHeap->Free(c.srv);
+		for(auto& u : c.uavs) mHeap->Free(u);
+		c.uavs.clear();
 	}
 }

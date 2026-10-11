@@ -40,20 +40,25 @@ namespace baek
 		const uint8_t flatNormal[4] = { 128, 128, 255, 255 };			// (0, 0, 1) = 요철 없음
 		mFlatNormal.CreateFromPixels(renderer, flatNormal, 1, 1, false);
 
-		// Root Signature: b0 PerFrame, b1 PerObject, t0 albedo, t1 normal, t2 metallic-roughness, s0 sampler
-		CD3DX12_DESCRIPTOR_RANGE ranges[5];
-		for(UINT i = 0; i < 5; ++i)
-			ranges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, i);				// t0~t4
+		// Root Signature: b0 PerFrame, b1 PerObject, t0 albedo, t1 normal, t2 metallic-roughness, s0 sampler, s1 clamp sampler
+		CD3DX12_DESCRIPTOR_RANGE ranges[7];
+		for(UINT i = 0; i < 7; ++i)
+			ranges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, i);				// t0~t6
 
 		// --- Root Signature: b0 = MVP (root constants 16개) ---
-		CD3DX12_ROOT_PARAMETER params[7];
+		CD3DX12_ROOT_PARAMETER params[9];
 		params[0].InitAsConstantBufferView(0);
 		params[1].InitAsConstantBufferView(1);
-		for(UINT i = 0; i < 5; ++i)
+		for(UINT i = 0; i < 7; ++i)
 			params[2+i].InitAsDescriptorTable(1, &ranges[i], D3D12_SHADER_VISIBILITY_PIXEL);
 		
-		CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_ANISOTROPIC);		// 기본값: WRAP, 16x
-		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(7, params, 1, &sampler, 
+		CD3DX12_STATIC_SAMPLER_DESC samplers[2] = 
+		{
+			CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_ANISOTROPIC),												// s0: 일반 텍스처
+			CD3DX12_STATIC_SAMPLER_DESC(1, D3D12_FILTER_MIN_MAG_MIP_LINEAR,											// s1: LUT
+				D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP),
+		};
+		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(9, params, 2, samplers, 
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 		ComPtr<ID3DBlob> sig, err;
@@ -174,6 +179,8 @@ namespace baek
 			cmd->SetGraphicsRootDescriptorTable(4, (mat.metallicRoughnessMap ?	mat.metallicRoughnessMap : &mWhite)->Srv());
 			cmd->SetGraphicsRootDescriptorTable(5, (mat.emissiveMap ?			mat.emissiveMap : &mWhite)->Srv());
 			cmd->SetGraphicsRootDescriptorTable(6, mIrradianceSrv);
+			cmd->SetGraphicsRootDescriptorTable(7, mPrefilteredSrv);
+			cmd->SetGraphicsRootDescriptorTable(8, mBrdfLutSrv);
 		};
 		
 		// --- Grid ---

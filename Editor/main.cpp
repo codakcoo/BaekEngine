@@ -276,7 +276,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
         baek::IBL ibl;
         ibl.Init(renderer, envMap);
-        sceneRenderer.SetIrradiance(ibl.IrradianceSrv());
+        sceneRenderer.SetIBL(ibl.IrradianceSrv(), ibl.PrefilteredSrv(), ibl.BrdfLutSrv());
 
         baek::SkyPass sky;
         sky.Init(device, DXGI_FORMAT_R16G16B16A16_FLOAT, baek::RenderTarget::DepthFormat);
