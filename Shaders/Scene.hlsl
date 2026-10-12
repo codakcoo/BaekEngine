@@ -1,6 +1,13 @@
 static const float PI = 3.14159265f;
 static const float kPrefilterMaxLod = 4.0f;         // = prefilterMips - 1 (c++ 쪽과 맞출 것)
 
+static const float3 kCascadeColors[5] =
+{
+    float3(1.0f, 0.4f, 0.4f), float3(0.4f, 1.0f, 0.4f),
+    float3(0.4f, 0.4f, 1.0f), float3(1.0f, 1.0f, 0.4f),
+    float3(1.0f, 1.0f, 1.0f), // beyond shadow distance
+};
+
 Texture2D               gAlbedoMap      : register(t0);
 Texture2D               gNormalMap      : register(t1);
 Texture2D               gMRMap          : register(t2);
@@ -8,7 +15,7 @@ Texture2D               gEmissiveMap    : register(t3);
 TextureCube             gIrradianceMap  : register(t4);
 TextureCube             gPrefilterMap   : register(t5);
 Texture2D               gBrdfLut        : register(t6);
-Texture2D               gShadowMap      : register(t7);
+Texture2DArray          gShadowMap      : register(t7);
 SamplerState            gSampler        : register(s0);
 SamplerState            gClampSampler   : register(s1);
 SamplerComparisonState  gShadowSampler : register(s2);
@@ -19,7 +26,10 @@ cbuffer PerFrame : register(b0)
     float3 gCameraPos;      float _pad0;
     float3 gLightDir;       float _pad1; // direction the light travels
     float3 gLightColor;     float gAmbient;
-    float4x4 gLightViewProj;
+    float3 gCameraForward;  float _pad2;
+    float4x4 gCascadeViewProj[4];
+    float4 gCascadeSplits;      // far distance of each cascade
+    float4 gCascadeTexel;       // world size of one shadow texel per cascade
     float4 gShadowParams;       // x = bias, y = texel size, z = normal offset
 };
 
@@ -105,11 +115,26 @@ float3 F_SchilckRoughness(float NdotV, float3 F0, float roughness)
 }
 
 // 1 = lit, 0 = fully in shadow
-float ShadowFactor(float3 worldPos, float3 Ng)
+float ShadowFactor(float3 worldPos, float3 Ng, out uint cascade)
 {
-    // Push the lookup position along the surface normal to avoid self-shadowing
-    float3 p = worldPos + Ng * gShadowParams.z;
-    float4 lp = mul(float4(p, 1.0f), gLightViewProj);
+    // Pick the cascade by distance along the camera's forward axis
+    float viewDepth = dot(worldPos - gCameraPos, gCameraForward);
+    cascade = 0;
+    [unroll]
+    for (uint c = 0; c < 3; ++c)
+    {
+        if (viewDepth > gCascadeSplits[c])
+            cascade = c + 1;
+    }
+    if (viewDepth > gCascadeSplits[3])
+    {
+        cascade = 4;
+        return 1.0f;
+    }
+    
+    // Normal offset scaled by this cascade's texel size
+    float3 p = worldPos + Ng * (gShadowParams.z * gCascadeTexel[cascade]);
+    float4 lp = mul(float4(p, 1.0f), gCascadeViewProj[cascade]);
     float3 ndc = lp.xyz / lp.w;
     
     float2 uv = ndc.xy * float2(0.5f, -0.5f) + 0.5f;            // NDC -> texture UV (Y flipped)
@@ -127,7 +152,7 @@ float ShadowFactor(float3 worldPos, float3 Ng)
         [unroll]
         for (int x = -1; x <= 1; ++x)
         {
-            sum += gShadowMap.SampleCmpLevelZero(gShadowSampler, uv + float2(x, y) * texel, depth);
+            sum += gShadowMap.SampleCmpLevelZero(gShadowSampler, float3(uv + float2(x, y) * texel, cascade), depth);
         }
 
     }
@@ -172,7 +197,8 @@ float4 PSLit(VSOut i) : SV_Target
     float3 kD = (1.0f - F) * (1.0f - metallic);         // metal have no diffuse
     float3 diffuse = kD * albedo / PI;
     
-    float shadow = ShadowFactor(i.worldPos, Ng);
+    uint cascade;
+    float shadow = ShadowFactor(i.worldPos, Ng, cascade);
     float3 direct = (diffuse + specualr) * gLightColor * NdotL * shadow;            // 직접광에만 적용
     
     // Image-based lighting
@@ -192,5 +218,8 @@ float4 PSLit(VSOut i) : SV_Target
     float3 ambient = (diffuseIBL + specularIBL) * gAmbient;
     float3 emissive = gEmissive.rgb * gEmissiveMap.Sample(gSampler, i.uv).rgb;
     
-    return float4(direct + ambient + emissive, 1.0f);
+    float3 color = direct + ambient + emissive;
+    if(gShadowParams.w > 0.5f)
+        color *= kCascadeColors[cascade];               // debug: tint by cascade
+    return float4(color, 1.0f);
 }

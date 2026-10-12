@@ -20,7 +20,9 @@ namespace baek
 
 		const DirectX::XMFLOAT3& Position() const { return mPos;}
 
-	private:
+		float FovY() const { return mFovY; }
+		float Aspect() const { return mAspect; }
+		float NearZ() const { return mNear; }
 		DirectX::XMVECTOR Forward() const;
 
 	// Property

@@ -25,9 +25,11 @@ namespace baek
 		DirectX::XMFLOAT3 color{ 1, 1, 1};
 		float intensity = 3.0f;
 		float iblIntensity = 1.0f;
-		float shadowRadius = 15.0f;									// 그림자를 계산할 영역의 반지름 (원점 기준)
+		float shadowDistance = 50.0f;								// 이 거리까지만 그림자 계산
+		float cascadeLambda = 0.75f;								// 구간 분할: 0 = 균등, 1 = 로그 (가까운 곳에 몰아줌)
 		float shadowBias = 0.0005f;									// 깊이 비교 여유값
-		float normalOffset = 0.02f;									// 비교 위치를 노멀 방향으로 밀어내는 거리
+		float normalOffset = 0.02f;									// 단위: 섀도우 맵 텍셀 (구간 크기에 맞춰 자동으로 커짐)
+		bool showCascade = false;									// 구간별 색 표시 (디버그)
 	};
 
 	class Scene

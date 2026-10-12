@@ -6,6 +6,8 @@
 #include "Scene/Camera.h"
 #include <DirectXMath.h>
 #include <vector>
+#include <algorithm>
+#include <cmath>
 
 using namespace DirectX;
 
@@ -18,7 +20,10 @@ namespace baek
 		XMFLOAT3 cameraPos;		float pad0;
 		XMFLOAT3 lightDir;		float pad1;
 		XMFLOAT3 lightColor;	float ambient;
-		XMFLOAT4X4 lightViewProj;
+		XMFLOAT3 cameraForward;	float pad2;
+		XMFLOAT4X4 cascadeViewProj[ShadowMap::kCascades];
+		XMFLOAT4 cascadeSplits;
+		XMFLOAT4 cascadeTexel;
 		XMFLOAT4 shadowParams;			
 		// x = bias, 
 		// y = 1 / shadow map size, 
@@ -174,8 +179,13 @@ namespace baek
 						  scene.light.color.y * scene.light.intensity, 
 						  scene.light.color.z * scene.light.intensity, };
 		pf.ambient = scene.light.iblIntensity;
-		XMStoreFloat4x4(&pf.lightViewProj, XMMatrixTranspose(XMLoadFloat4x4(&mLightViewProj)));
-		pf.shadowParams = { scene.light.shadowBias, mShadowTexel, scene.light.normalOffset, 0.0f };
+		XMStoreFloat3(&pf.cameraForward, camera.Forward());
+		for(UINT c = 0; c < ShadowMap::kCascades; ++c)
+			XMStoreFloat4x4(&pf.cascadeViewProj[c], XMMatrixTranspose(XMLoadFloat4x4(&mCascadeVP[c])));
+		pf.cascadeSplits = mCascadeSplits;
+		pf.cascadeTexel = mCascadeTexel;
+		pf.shadowParams = { scene.light.shadowBias, mShadowTexel, scene.light.normalOffset, 
+			scene.light.showCascade ? 1.0f : 0.0f };
 		cmd->SetGraphicsRootConstantBufferView(0, cb.Alloc(&pf, sizeof(pf)));
 
 		
@@ -223,40 +233,110 @@ namespace baek
 	}
 	
 	
-	void SceneRenderer::RenderShadowPass(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Scene& scene, ShadowMap& shadow)
+	void SceneRenderer::RenderShadowPass(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Camera& camera, const Scene& scene, ShadowMap& shadow)
 	{
 		UploadRing& cb = mCB[frameIndex];
 		cb.Reset();				// 프레임의 첫 패스에서 링을 비운다.
 
-		// --- 빛의 시점: 원점을 중심으로 한 정사영 박스 ---
-		const float R = scene.light.shadowRadius;
+		constexpr UINT N = ShadowMap::kCascades;
+		const float size = (float)shadow.Size();
+		const float nearZ = camera.NearZ();
+		const float farZ = scene.light.shadowDistance;
+		const float lambda = scene.light.cascadeLambda;
+
+		// --- 1) 구간 경계: 로그 분할과 균등 분할용 섞음 ---
+		float splits[N + 1];
+		splits[0] = nearZ;
+		for (UINT i = 1; i <= N; ++i)
+		{
+			const float p = (float)i/N;
+			const float logSplit = nearZ * powf(farZ / nearZ, p);
+			const float uniSplit = nearZ * (farZ - nearZ) * p;
+			splits[i] = lambda * logSplit + (1.0f - lambda) * uniSplit;
+		}
+
 		const XMVECTOR dir = XMVector3Normalize(XMLoadFloat3(&scene.light.direction));
-		const XMVECTOR center = XMVectorZero();
-		const XMVECTOR eye = center - dir * (R * 2.0f);
 		const XMVECTOR up = fabsf(XMVectorGetY(dir)) > 0.99f ? XMVectorSet(0, 0, 1, 0) : XMVectorSet(0, 1, 0, 0);
+		const XMMATRIX view = camera.View();
 
-		const XMMATRIX lightVP = XMMatrixLookAtLH(eye, center, up) * XMMatrixOrthographicLH(2.0f * R, 2.0f * R, 0.1f, 4.0f * R);
-		XMStoreFloat4x4(&mLightViewProj, lightVP);
-		mShadowSrv = shadow.Srv();
-		mShadowTexel = 1.0f / (float)shadow.Size();
+		// --- 2) 구간마다 빛 시점 행렬 ---
+		for (UINT c = 0; c < N; ++c)
+		{
+			// 카메라 시야를 이 구간 거리로 자른 절두체의 8개의 꼭짓점 (월드 공간)
+			const XMMATRIX proj = XMMatrixPerspectiveFovLH(camera.FovY(), camera.Aspect(), splits[c], splits[c + 1]);
+			const XMMATRIX invVP = XMMatrixInverse(nullptr, view * proj);
 
-		// -- 깊이만 그리기 ---
-		shadow.Begin(cmd);
-		cmd->SetGraphicsRootSignature(mRootSig.Get());
-		cmd->SetPipelineState(mShadowPso.Get());
+			XMVECTOR corners[8];
+			int k = 0;
+			for (float x : { -1.0f, 1.0f})
+			{
+				for (float y : { -1.0f, 1.0f })
+				{
+					for (float z : { 0.0f, 1.0f })
+						corners[k++] = XMVector3TransformCoord(XMVectorSet(x, y, z, 1.0f), invVP);
+				}
+			}
 
-		PerFrameCB pf{};
-		XMStoreFloat4x4(&pf.viewProj, XMMatrixTranspose(lightVP));			// 정점 셰이더는 그대로, 시점만 빛으로
-		cmd->SetGraphicsRootConstantBufferView(0, cb.Alloc(&pf, sizeof(pf)));
+			// 꼭짓점을 감싸는 구: 카메라가 회전해도 크기가 변하지 않아 그림자가 안정적
+			XMVECTOR center = XMVectorZero();
+			for (const XMVECTOR& p : corners) center += p;
+			center /= 8.0f;
 
+			float radius = 0.0f;
+			for(const XMVECTOR& p : corners)
+				radius = std::max(radius, XMVectorGetX(XMVector3Length(p - center)));
+			radius = ceilf(radius * 16.0f) / 16.0f;
+
+			// 빛 방향으로 뒤로 물러나서 구간 밖의 그림자 드리우는 물체도 포함
+			const float extra = 50.0f;
+			const XMVECTOR eye = center - dir * (radius + extra);
+			const XMMATRIX lightView = XMMatrixLookAtLH(eye, center, up);
+			XMMATRIX lightProj = XMMatrixOrthographicOffCenterLH(-radius, radius, -radius, radius, 
+																 0.0f, 2.0f * radius + extra);
+
+			// 텍셀 스냅: 월드 원점이 항상 텍셀 경계에 오도록 박스를 미세 이동
+			const XMVECTOR origin = XMVector3TransformCoord(XMVectorZero(), lightView * lightProj);
+			const float half = size * 0.5f;
+			const float ox = XMVectorGetX(origin) * half, oy = XMVectorGetY(origin) * half;
+			lightProj.r[3] += XMVectorSet((roundf(ox) - ox) / half, (roundf(oy) - oy) / half, 0.0f, 0.0f);
+			
+			XMStoreFloat4x4(&mCascadeVP[c], lightView * lightProj);
+			(&mCascadeSplits.x)[c] = splits[c+1];
+			(&mCascadeTexel.x)[c] = 2.0f * radius / size;
+		}
+		mShadowSrv = shadow.Srv();;
+		mShadowTexel = 1.0f / size;
+		
+
+		// --- 3) 오브젝트 상수는 한 번만 올리고 구간마다 재사요요 ---
+		std::vector<std::pair<const Entity*, D3D12_GPU_VIRTUAL_ADDRESS>> draws;
 		for (const Entity& e : scene.Entities())
 		{
 			if(!e.visible || !e.mesh) continue;
 
 			PerObjectCB po{};
 			XMStoreFloat4x4(&po.world, XMMatrixTranspose(e.transform.Matrix()));
-			cmd->SetGraphicsRootConstantBufferView(1, cb.Alloc(&po, sizeof(po)));
-			e.mesh->Draw(cmd);
+			draws.push_back({ &e, cb.Alloc(&po, sizeof(po))});
+		}
+
+		// --- 4) 구간마다 깊이 그리기 ---
+		shadow.Begin(cmd);
+		cmd->SetGraphicsRootSignature(mRootSig.Get());
+		cmd->SetPipelineState(mShadowPso.Get());
+
+		for (UINT c = 0; c < N; ++c)
+		{
+			shadow.BeginCascade(cmd, c);
+
+			PerFrameCB pf{};
+			XMStoreFloat4x4(&pf.viewProj, XMMatrixTranspose(XMLoadFloat4x4(&mCascadeVP[c])));
+			cmd->SetGraphicsRootConstantBufferView(0, cb.Alloc(&pf, sizeof(pf)));
+
+			for (const auto& [e, addr] : draws)
+			{
+				cmd->SetGraphicsRootConstantBufferView(1, addr);
+				e->mesh->Draw(cmd);
+			}
 		}
 		shadow.End(cmd);
 	}

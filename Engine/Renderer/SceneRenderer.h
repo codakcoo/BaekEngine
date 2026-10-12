@@ -18,7 +18,7 @@ namespace baek
 		void Init(Renderer& renderer, DXGI_FORMAT rtvFormat, DXGI_FORMAT dsvFormat);
 		void Render(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Camera& camera, const Scene& scene);
 		// 매 프레임 Render보다 먼저 호출(상수 버퍼 링을 여기서 비움)
-		void RenderShadowPass(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Scene& scene, ShadowMap& shadow);
+		void RenderShadowPass(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Camera& camera, const Scene& scene, ShadowMap& shadow);
 		void Shutdown();
 		
 		void SetIBL(D3D12_GPU_DESCRIPTOR_HANDLE irradiance, D3D12_GPU_DESCRIPTOR_HANDLE prefiltered, D3D12_GPU_DESCRIPTOR_HANDLE brdfLut) 
@@ -37,7 +37,9 @@ namespace baek
 		
 		// 섀도우맵
 		ComPtr<ID3D12PipelineState> mShadowPso;
-		DirectX::XMFLOAT4X4 mLightViewProj{};
+		DirectX::XMFLOAT4X4 mCascadeVP[ShadowMap::kCascades]{};
+		DirectX::XMFLOAT4 mCascadeSplits{};						// 구간별 끝 거리 (카메라 기준)
+		DirectX::XMFLOAT4 mCascadeTexel{};						// 구간별 텍셀 하나의 월드 크기
 		D3D12_GPU_DESCRIPTOR_HANDLE mShadowSrv{};
 		float mShadowTexel = 0.0f;
 

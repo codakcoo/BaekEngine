@@ -214,10 +214,11 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scen
     ImGui::SliderFloat("Sky Intensity", &gSkyIntensity, 0.0f, 5.0f);
     ImGui::SliderFloat("IBL Intensity", &scene.light.iblIntensity, 0.0f, 3.0f);
     ImGui::SeparatorText("Shadow");
-    ImGui::SliderFloat("Radius", &scene.light.shadowRadius, 2.0f, 50.0f);
+    ImGui::SliderFloat("Distance", &scene.light.shadowDistance, 10.0f, 200.0f);
+    ImGui::SliderFloat("Split Lambda", &scene.light.cascadeLambda, 0.0f, 1.0f);
     ImGui::SliderFloat("Bias", &scene.light.shadowBias, 0.0f, 0.01f, "%.5f");
-    ImGui::SliderFloat("Normal Offset", &scene.light.normalOffset, 0.0f, 0.2f);
-    ImGui::Image((ImTextureID)shadowMap.Srv().ptr, ImVec2(160, 160));               // 섀도우 맵 미리보기
+    ImGui::SliderFloat("Normal Offset", &scene.light.normalOffset, 0.0f, 5.0);
+    ImGui::Checkbox("Show Cascades", &scene.light.showCascade);
     ImGui::End();
 
     // 계층, 도구 그리기
@@ -444,7 +445,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             camera.SetAspect((float)viewportRT.Width() / (float)viewportRT.Height());
 
             // 그림자(씬보다 먼저)
-            sceneRenderer.RenderShadowPass(cmd, renderer.FrameIndex(), scene, shadowMap);
+            sceneRenderer.RenderShadowPass(cmd, renderer.FrameIndex(), camera, scene, shadowMap);
 
             // 1) 씬 -> HDR
             sceneRT.Begin(cmd);
