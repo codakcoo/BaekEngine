@@ -22,7 +22,7 @@ namespace baek
 		dsv.Format = DsvFormat;
 		dsv.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 		mDsv = mDsvHeap->Allocate();
-		device->CreateDepthStencilView(mTex.Get, &dsv, mDsv.cpu);
+		device->CreateDepthStencilView(mTex.Get(), &dsv, mDsv.cpu);
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
 		srv.Format = DXGI_FORMAT_R32_FLOAT;
@@ -40,7 +40,7 @@ namespace baek
 		cmd->ResourceBarrier(1, &b);
 
 		cmd->OMSetRenderTargets(0, nullptr, FALSE, &mDsv.cpu);		// 컬러 타깃 없음, 깊이만
-		cmd->ClearDepthStencilView(mDsv.cpu, nullptr, 1.0f, 0, 0, nullptr);
+		cmd->ClearDepthStencilView(mDsv.cpu, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 		D3D12_VIEWPORT vp{ 0, 0, (float)mSize, (float)mSize, 0, 1 };
 		D3D12_RECT sc{ 0, 0, (LONG)mSize, (LONG)mSize };

@@ -10,6 +10,7 @@
 #include "Renderer\Texture.h"
 #include "Renderer\SkyPass.h"
 #include "Renderer\IBL.h"
+#include "Renderer\ShadowMap.h"
 #include "Scene/Scene.h"
 #include "Asset\Model.h"
 #include "imgui.h"
@@ -23,6 +24,7 @@
 
 baek::RenderTarget sceneRT;             // HDR: 씬을 그리는 곳
 baek::RenderTarget viewportRT;          // LDR: 톤매핑 결과, ImGui가 표시 (기존 변수)
+baek::ShadowMap shadowMap;
 
 
 UINT vpReqW = 1200, vpReqH = 720;       // UI가 요청한 크기
@@ -211,6 +213,11 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scen
     ImGui::SliderFloat("Exposure", &gExposure, 0.1f, 5.0f);
     ImGui::SliderFloat("Sky Intensity", &gSkyIntensity, 0.0f, 5.0f);
     ImGui::SliderFloat("IBL Intensity", &scene.light.iblIntensity, 0.0f, 3.0f);
+    ImGui::SeparatorText("Shadow");
+    ImGui::SliderFloat("Radius", &scene.light.shadowRadius, 2.0f, 50.0f);
+    ImGui::SliderFloat("Bias", &scene.light.shadowBias, 0.0f, 0.01f, "%.5f");
+    ImGui::SliderFloat("Normal Offset", &scene.light.normalOffset, 0.0f, 0.2f);
+    ImGui::Image((ImTextureID)shadowMap.Srv().ptr, ImVec2(160, 160));               // 섀도우 맵 미리보기
     ImGui::End();
 
     // 계층, 도구 그리기
@@ -280,6 +287,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
         baek::SkyPass sky;
         sky.Init(device, DXGI_FORMAT_R16G16B16A16_FLOAT, baek::RenderTarget::DepthFormat);
+
+        shadowMap.Init(device, &renderer.DsvHeap(), &renderer.SrvHeap(), 2048);
 
         baek::Texture checker;                  // 체커보드 텍스처 (256x256, 32픽셀 칸)
         {
@@ -368,7 +377,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         }
 
         baek::Mesh sphereMesh = baek::Mesh::CreateSphere(device);
-
         for (int i = 0; i < 5; ++i)
         {
             const float rough = 0.1f + 0.2f * i;        // 0.1, 0.3, 0.5, 0.7, 0.9
@@ -396,7 +404,19 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                 e.material = &plastic;
                 e.transform.position = { x, 0.5f, -5.0f };
             }
+        }
 
+        // 바닥
+        baek::Mesh planeMesh = baek::Mesh::CreatePlane(device, 1.0f);
+        auto& floorMat = scene.CreateMaterial("Floor");
+        floorMat.baseColor = { 0.55f, 0.55f, 0.55f };
+        floorMat.roughness = 0.9f;
+        {
+            auto& e = scene.Create("Floor");
+            e.mesh = &planeMesh;
+            e.material = &floorMat;
+            e.transform.position = { 0.0f, -0.01f, 0.0f };            // 그리드 선과 겹쳐 깜빡이지 않게 살짝 아래
+            e.transform.scale = { 30.0f, 1.0f, 30.0f };
         }
 
         const float clear[4] = { 0.10f, 0.10f, 0.15f, 1.0f };
@@ -423,6 +443,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             
             camera.SetAspect((float)viewportRT.Width() / (float)viewportRT.Height());
 
+            // 그림자(씬보다 먼저)
+            sceneRenderer.RenderShadowPass(cmd, renderer.FrameIndex(), scene, shadowMap);
+
             // 1) 씬 -> HDR
             sceneRT.Begin(cmd);
             sceneRenderer.Render(cmd, renderer.FrameIndex(), camera, scene);
@@ -441,6 +464,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
         renderer.WaitIdle();                        // GPU가 ImGui 리소스를 다 쓴 뒤에
         cubeMesh.Shutdown();
+        shadowMap.Shutdown();
+        planeMesh.Shutdown();
         sky.Shutdown();
         ibl.Shutdown();
         envMap.Shutdown();

@@ -147,6 +147,8 @@ float4 PSLit(VSOut i) : SV_Target
     float3 T = normalize(i.tangent.xyz - N * dot(N, i.tangent.xyz));        // re-orthogonalize
     float3 B = cross(N, T) * i.tangent.w;
     
+    float3 Ng = normalize(i.normal);                                        // 노멀 맵 적용 전, 지오메트리 노멀 (맨 앞에서 저장)
+    
     float3 nTS = gNormalMap.Sample(gSampler, i.uv).xyz * 2.0f - 1.0f;       // [0,1] -> [-1,1]
     N = normalize(nTS.x * T + nTS.y * B + nTS.z * N);
     
@@ -170,7 +172,8 @@ float4 PSLit(VSOut i) : SV_Target
     float3 kD = (1.0f - F) * (1.0f - metallic);         // metal have no diffuse
     float3 diffuse = kD * albedo / PI;
     
-    float3 direct = (diffuse + specualr) * gLightColor * NdotL;
+    float shadow = ShadowFactor(i.worldPos, Ng);
+    float3 direct = (diffuse + specualr) * gLightColor * NdotL * shadow;            // 직접광에만 적용
     
     // Image-based lighting
     float3 ks_amb = F_SchilckRoughness(NdotV, F0, roughness);
