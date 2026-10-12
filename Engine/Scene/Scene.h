@@ -25,6 +25,9 @@ namespace baek
 		DirectX::XMFLOAT3 color{ 1, 1, 1};
 		float intensity = 3.0f;
 		float iblIntensity = 1.0f;
+		float shadowRadius = 15.0f;									// 그림자를 계산할 영역의 반지름 (원점 기준)
+		float shadowBias = 0.0005f;									// 깊이 비교 여유값
+		float normalOffset = 0.02f;									// 비교 위치를 노멀 방향으로 밀어내는 거리
 	};
 
 	class Scene

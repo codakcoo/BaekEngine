@@ -3,6 +3,7 @@
 #include "RHI/UploadRing.h"
 #include "Renderer/Texture.h"
 #include "Renderer/Material.h"
+#include "Renderer\ShadowMap.h"
 #include <DirectXMath.h>
 
 namespace baek
@@ -16,6 +17,8 @@ namespace baek
 	public:
 		void Init(Renderer& renderer, DXGI_FORMAT rtvFormat, DXGI_FORMAT dsvFormat);
 		void Render(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Camera& camera, const Scene& scene);
+		// 매 프레임 Render보다 먼저 호출(상수 버퍼 링을 여기서 비움)
+		void RenderShadowPass(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Scene& scene, ShadowMap& shadow);
 		void Shutdown();
 		
 		void SetIBL(D3D12_GPU_DESCRIPTOR_HANDLE irradiance, D3D12_GPU_DESCRIPTOR_HANDLE prefiltered, D3D12_GPU_DESCRIPTOR_HANDLE brdfLut) 
@@ -32,6 +35,11 @@ namespace baek
 
 		UploadRing mCB[2];
 		
+		// 섀도우맵
+		ComPtr<ID3D12PipelineState> mShadowPso;
+		DirectX::XMFLOAT4X4 mLightViewProj{};
+		D3D12_GPU_DESCRIPTOR_HANDLE mShadowSrv{};
+		float mShadowTexel = 0.0f;
 
 		Texture mWhite;								// 텍스처가 없는 엔티티용 1x1 흰색 (albedo / metallic-roughness 기본값)
 		Texture mFlatNormal;						// normal 기본값

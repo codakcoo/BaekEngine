@@ -27,6 +27,7 @@ namespace baek
 
 		static Mesh CreateCube(ID3D12Device* device);			// 1x1x1, 원점 중심
 		static Mesh CreateSphere(ID3D12Device* device, int slices = 32, int stacks = 16);		// 지름 1, 원점 중심
+		static Mesh CreatePlane(ID3D12Device* device, float size = 1.0f);						// XZ 평면, 위쪽(+Y)를 향함
 
 	private:
 		ComPtr<ID3D12Resource> mVB, mIB;

@@ -117,4 +117,24 @@ namespace baek
 		m.Create(device, verts, idx);
 		return m;
 	}
+	Mesh Mesh::CreatePlane(ID3D12Device* device, float size)
+	{
+		using namespace DirectX;
+		const float h = size*0.5f;
+		const XMFLOAT3 n{0, 1, 0}, white{1,1,1};
+		const XMFLOAT4 t{1, 0, 0, 1};
+
+		const std::vector<Vertex> verts = 
+		{
+			{ { -h, 0, -h }, n, t, { 0, 1 }, white },
+			{ { -h, 0,  h }, n, t, { 0, 0 }, white },
+			{ {  h, 0,  h }, n, t, { 1, 0 }, white },
+			{ {  h, 0, -h }, n, t, { 1, 1 }, white },
+		};
+		const std::vector<uint32_t> idx = { 0, 1, 2, 0, 2, 3 };
+
+		Mesh m;
+		m.Create(device, verts, idx);
+		return m;
+	}
 }

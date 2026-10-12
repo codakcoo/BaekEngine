@@ -18,6 +18,11 @@ namespace baek
 		XMFLOAT3 cameraPos;		float pad0;
 		XMFLOAT3 lightDir;		float pad1;
 		XMFLOAT3 lightColor;	float ambient;
+		XMFLOAT4X4 lightViewProj;
+		XMFLOAT4 shadowParams;			
+		// x = bias, 
+		// y = 1 / shadow map size, 
+		// z = normal offset
 	};
 
 	struct PerObjectCB
@@ -41,24 +46,28 @@ namespace baek
 		mFlatNormal.CreateFromPixels(renderer, flatNormal, 1, 1, false);
 
 		// Root Signature: b0 PerFrame, b1 PerObject, t0 albedo, t1 normal, t2 metallic-roughness, s0 sampler, s1 clamp sampler
-		CD3DX12_DESCRIPTOR_RANGE ranges[7];
-		for(UINT i = 0; i < 7; ++i)
-			ranges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, i);				// t0~t6
+		CD3DX12_DESCRIPTOR_RANGE ranges[8];
+		for(UINT i = 0; i < 8; ++i)
+			ranges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, i);				// t0~t7
 
 		// --- Root Signature: b0 = MVP (root constants 16개) ---
-		CD3DX12_ROOT_PARAMETER params[9];
+		CD3DX12_ROOT_PARAMETER params[10];
 		params[0].InitAsConstantBufferView(0);
 		params[1].InitAsConstantBufferView(1);
-		for(UINT i = 0; i < 7; ++i)
+		for(UINT i = 0; i < 8; ++i)
 			params[2+i].InitAsDescriptorTable(1, &ranges[i], D3D12_SHADER_VISIBILITY_PIXEL);
 		
-		CD3DX12_STATIC_SAMPLER_DESC samplers[2] = 
+		CD3DX12_STATIC_SAMPLER_DESC samplers[3] = 
 		{
 			CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_ANISOTROPIC),												// s0: 일반 텍스처
 			CD3DX12_STATIC_SAMPLER_DESC(1, D3D12_FILTER_MIN_MAG_MIP_LINEAR,											// s1: LUT
 				D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP),
+			// s2: 그림자 비교용, 범위 밖은 흰색(=그림자 없음)으로 처리
+			CD3DX12_STATIC_SAMPLER_DESC(2, D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT,
+				D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+				0.0f, 16, D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE),
 		};
-		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(9, params, 2, samplers, 
+		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(10, params, 3, samplers, 
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 		ComPtr<ID3DBlob> sig, err;
@@ -106,6 +115,16 @@ namespace baek
 		linePSO.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
 		ThrowIfFailed(device->CreateGraphicsPipelineState(&linePSO, IID_PPV_ARGS(&mLinePSO)));
 
+		auto shadowPso = pso;
+		shadowPso.PS = {};													// 픽셀 셰이더 없음 = 깊이만 기록
+		shadowPso.NumRenderTargets = 0;
+		shadowPso.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
+		shadowPso.DSVFormat = ShadowMap::DsvFormat;
+		shadowPso.RasterizerState.DepthBias = 1000;							// 그림자 여드름(acne) 방지
+		shadowPso.RasterizerState.SlopeScaledDepthBias = 2.0f;				// 비스듬한 면일수록 더 밀어냄
+		shadowPso.RasterizerState.DepthBiasClamp = 0.0f;
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&shadowPso, IID_PPV_ARGS(&mShadowPso)));
+
 		// 상수 버퍼링 (1MB씩)
 		for (auto& cb : mCB) cb.Init(device, 1024 * 1024);
 
@@ -140,7 +159,6 @@ namespace baek
 	void SceneRenderer::Render(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Camera& camera, const Scene& scene)
 	{
 		UploadRing& cb = mCB[frameIndex];
-		cb.Reset();
 
 		cmd->SetGraphicsRootSignature(mRootSig.Get());
 
@@ -156,6 +174,8 @@ namespace baek
 						  scene.light.color.y * scene.light.intensity, 
 						  scene.light.color.z * scene.light.intensity, };
 		pf.ambient = scene.light.iblIntensity;
+		XMStoreFloat4x4(&pf.lightViewProj, XMMatrixTranspose(XMLoadFloat4x4(&mLightViewProj)));
+		pf.shadowParams = { scene.light.shadowBias, mShadowTexel, scene.light.normalOffset, 0.0f };
 		cmd->SetGraphicsRootConstantBufferView(0, cb.Alloc(&pf, sizeof(pf)));
 
 		
@@ -181,6 +201,7 @@ namespace baek
 			cmd->SetGraphicsRootDescriptorTable(6, mIrradianceSrv);
 			cmd->SetGraphicsRootDescriptorTable(7, mPrefilteredSrv);
 			cmd->SetGraphicsRootDescriptorTable(8, mBrdfLutSrv);
+			cmd->SetGraphicsRootDescriptorTable(9, mShadowSrv);
 		};
 		
 		// --- Grid ---
@@ -202,6 +223,44 @@ namespace baek
 	}
 	
 	
+	void SceneRenderer::RenderShadowPass(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Scene& scene, ShadowMap& shadow)
+	{
+		UploadRing& cb = mCB[frameIndex];
+		cb.Reset();				// 프레임의 첫 패스에서 링을 비운다.
+
+		// --- 빛의 시점: 원점을 중심으로 한 정사영 박스 ---
+		const float R = scene.light.shadowRadius;
+		const XMVECTOR dir = XMVector3Normalize(XMLoadFloat3(&scene.light.direction));
+		const XMVECTOR center = XMVectorZero();
+		const XMVECTOR eye = center - dir * (R * 2.0f);
+		const XMVECTOR up = fabsf(XMVectorGetY(dir)) > 0.99f ? XMVectorSet(0, 0, 1, 0) : XMVectorSet(0, 1, 0, 0);
+
+		const XMMATRIX lightVP = XMMatrixLookAtLH(eye, center, up) * XMMatrixOrthographicLH(2.0f * R, 2.0f * R, 0.1f, 4.0f * R);
+		XMStoreFloat4x4(&mLightViewProj, lightVP);
+		mShadowSrv = shadow.Srv();
+		mShadowTexel = 1.0f / (float)shadow.Size();
+
+		// -- 깊이만 그리기 ---
+		shadow.Begin(cmd);
+		cmd->SetGraphicsRootSignature(mRootSig.Get());
+		cmd->SetPipelineState(mShadowPso.Get());
+
+		PerFrameCB pf{};
+		XMStoreFloat4x4(&pf.viewProj, XMMatrixTranspose(lightVP));			// 정점 셰이더는 그대로, 시점만 빛으로
+		cmd->SetGraphicsRootConstantBufferView(0, cb.Alloc(&pf, sizeof(pf)));
+
+		for (const Entity& e : scene.Entities())
+		{
+			if(!e.visible || !e.mesh) continue;
+
+			PerObjectCB po{};
+			XMStoreFloat4x4(&po.world, XMMatrixTranspose(e.transform.Matrix()));
+			cmd->SetGraphicsRootConstantBufferView(1, cb.Alloc(&po, sizeof(po)));
+			e.mesh->Draw(cmd);
+		}
+		shadow.End(cmd);
+	}
+
 	void SceneRenderer::Shutdown()
 	{
 		for (auto& cb : mCB) cb.Shutdown();

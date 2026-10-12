@@ -1,15 +1,17 @@
 static const float PI = 3.14159265f;
 static const float kPrefilterMaxLod = 4.0f;         // = prefilterMips - 1 (c++ 쪽과 맞출 것)
 
-Texture2D       gAlbedoMap      : register(t0);
-Texture2D       gNormalMap      : register(t1);
-Texture2D       gMRMap          : register(t2);
-Texture2D       gEmissiveMap    : register(t3);
-TextureCube     gIrradianceMap  : register(t4);
-TextureCube     gPrefilterMap   : register(t5);
-Texture2D       gBrdfLut        : register(t6);
-SamplerState    gSampler        : register(s0);
-SamplerState    gClampSampler   : register(s1);
+Texture2D               gAlbedoMap      : register(t0);
+Texture2D               gNormalMap      : register(t1);
+Texture2D               gMRMap          : register(t2);
+Texture2D               gEmissiveMap    : register(t3);
+TextureCube             gIrradianceMap  : register(t4);
+TextureCube             gPrefilterMap   : register(t5);
+Texture2D               gBrdfLut        : register(t6);
+Texture2D               gShadowMap      : register(t7);
+SamplerState            gSampler        : register(s0);
+SamplerState            gClampSampler   : register(s1);
+SamplerComparisonState  gShadowSampler : register(s2);
 
 cbuffer PerFrame : register(b0)
 {
@@ -17,6 +19,8 @@ cbuffer PerFrame : register(b0)
     float3 gCameraPos;      float _pad0;
     float3 gLightDir;       float _pad1; // direction the light travels
     float3 gLightColor;     float gAmbient;
+    float4x4 gLightViewProj;
+    float4 gShadowParams;       // x = bias, y = texel size, z = normal offset
 };
 
 cbuffer PerObject : register(b1)
@@ -98,6 +102,36 @@ float3 F_Schlick(float VdotH, float3 F0)
 float3 F_SchilckRoughness(float NdotV, float3 F0, float roughness)
 {
     return F0 + (max((1.0f - roughness).xxx, F0) - F0) * pow(saturate(1.0f - NdotV), 5.0f);
+}
+
+// 1 = lit, 0 = fully in shadow
+float ShadowFactor(float3 worldPos, float3 Ng)
+{
+    // Push the lookup position along the surface normal to avoid self-shadowing
+    float3 p = worldPos + Ng * gShadowParams.z;
+    float4 lp = mul(float4(p, 1.0f), gLightViewProj);
+    float3 ndc = lp.xyz / lp.w;
+    
+    float2 uv = ndc.xy * float2(0.5f, -0.5f) + 0.5f;            // NDC -> texture UV (Y flipped)
+    if(any(uv < 0.0f) || any(uv > 1.0f) || ndc.z > 1.0f)
+        return 1.0f;                                            // outside the shadow box
+    
+    float depth = ndc.z - gShadowParams.x;
+    float texel = gShadowParams.y;
+    
+    // 3x3 PCF: average 9 hardware-filtered comparisions -> soft edges
+    float sum = 0.0f;
+    [unroll]
+    for (int y = -1; y <= 1; ++y)
+    {
+        [unroll]
+        for (int x = -1; x <= 1; ++x)
+        {
+            sum += gShadowMap.SampleCmpLevelZero(gShadowSampler, uv + float2(x, y) * texel, depth);
+        }
+
+    }
+    return sum / 9.0f;
 }
 
 float4 PSLit(VSOut i) : SV_Target
