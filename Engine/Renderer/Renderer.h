@@ -3,6 +3,7 @@
 #include "RHI/Device.h"
 #include "RHI/SwapChain.h"
 #include "RHI/DescriptorHeap.h"
+#include "RHI/DeferredRelease.h"
 
 #include <functional>
 
@@ -30,6 +31,8 @@ namespace baek
 		ID3D12GraphicsCommandList* CommandList() const { return mCmdList.Get(); }
 		UINT FrameIndex() const { return mFrameIndex; }					// mAllocators[]의 인덱스로 쓰는 그 변수
 
+		DeferredReleaseQueue& ReleaseQueue() { return mRelease; }
+
 	private:
 		Window* mWindow = nullptr;
 		Device mDevice;
@@ -42,5 +45,7 @@ namespace baek
 		uint64_t								mFrameFence[FrameCount] = {};
 		uint64_t								mFrameIndex = 0;
 		ComPtr<ID3D12GraphicsCommandList>		mCmdList;
+
+		DeferredReleaseQueue mRelease;
 	};
 }

@@ -21,10 +21,14 @@ namespace baek
 		}
 		ThrowIfFailed(mDevice.Get()->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, mAllocators[0].Get(), nullptr, IID_PPV_ARGS(&mCmdList)));
 		ThrowIfFailed(mCmdList->Close());
+
+		mRelease.Init([this]{ return mDevice.LastSignaledValue() + 1; });
 	}
 
 	void Renderer::Shutdown()
 	{
+		WaitIdle();
+		mRelease.Flush();						// 디바이스보다 먼저 해제
 		mDevice.Shutdown();
 	}
 
@@ -62,6 +66,7 @@ namespace baek
 		}
 
 		mDevice.WaitForValue(mFrameFence[mFrameIndex]);
+		mRelease.Collect(mDevice.CompletedValue());				// GPU가 끝낸 목록 항목 해제
 
 		auto* alloc = mAllocators[mFrameIndex].Get();
 		ThrowIfFailed(alloc->Reset());

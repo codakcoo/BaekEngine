@@ -18,6 +18,9 @@ namespace baek
 		void		WaitForValue(uint64_t value);			// CPu 대기
 		void		Flush() { WaitForValue(Signal()); }
 
+		uint64_t LastSignaledValue() const { return mFenceValue; }
+		uint64_t CompletedValue() const { return mFence->GetCompletedValue(); }
+
 	private:
 		ComPtr<IDXGIFactory6>		mFactory;
 		ComPtr<ID3D12Device>		mDevice;

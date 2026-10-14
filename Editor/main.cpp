@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+baek::Renderer renderer;
 baek::RenderTarget sceneRT;             // HDR: 씬을 그리는 곳
 baek::RenderTarget viewportRT;          // LDR: 톤매핑 결과, ImGui가 표시 (기존 변수)
 baek::ShadowMap shadowMap;
@@ -204,6 +205,8 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scen
     ImGui::Text("FPS : %.1f", io.Framerate);
     ImGui::Text("Frame : %.3f", 1000.0f / io.Framerate);
     ImGui::Text("Cam : %.2f, %.2f, %.2f", p.x, p.y, p.z);
+    auto& rq = renderer.ReleaseQueue();
+    ImGui::Text("Release : %zu pending / %zu peak / %zu total", rq.Pending(), rq.Peak(), rq.TotalReleased());
     ImGui::Separator();
     ImGui::Checkbox("ImGui Demo", &showDemo);
     ImGui::SeparatorText("Directional Light");
@@ -255,7 +258,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             return -1;
         }
 
-        baek::Renderer renderer;
         renderer.Init(window);
 
         baek::ImGuiLayer imgui;
@@ -265,12 +267,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
         const float sceneClear[4] = { 0.012f, 0.012f, 0.014f, 1.0f };   // 선형 값 (화면에서는 어두운 회색)
         sceneRT.Init(device, &renderer.RtvHeap(), &renderer.DsvHeap(), &renderer.SrvHeap(),
-                     DXGI_FORMAT_R16G16B16A16_FLOAT, sceneClear, true);
+                     DXGI_FORMAT_R16G16B16A16_FLOAT, sceneClear, true, &renderer.ReleaseQueue());
         sceneRT.Resize(vpReqW, vpReqH);
 
         const float black[4] = { 0, 0, 0, 1 };
         viewportRT.Init(device, &renderer.RtvHeap(), &renderer.DsvHeap(), &renderer.SrvHeap(),
-                        DXGI_FORMAT_R8G8B8A8_UNORM, black, false);          // 깊이 없음
+                        DXGI_FORMAT_R8G8B8A8_UNORM, black, false, &renderer.ReleaseQueue());          // 깊이 없음
 		viewportRT.Resize(vpReqW, vpReqH);
 
         baek::TonemapPass tonemap;
@@ -430,7 +432,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             if (window.IsMinimized()) { Sleep(16); continue; }    // 최소화 시 0x0 스왑체인 방지
             if(vpReqW != viewportRT.Width() || vpReqH != viewportRT.Height())
             {
-                renderer.WaitIdle();                        // 아직 GPU가 쓰는 텍스처를 지우지 않도록 (지연 해제는 나중에)
                 sceneRT.Resize(vpReqW, vpReqH);
                 viewportRT.Resize(vpReqW, vpReqH);          // 크기 변경
 			}
@@ -464,6 +465,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         }
 
         renderer.WaitIdle();                        // GPU가 ImGui 리소스를 다 쓴 뒤에
+        renderer.ReleaseQueue().Flush();
         cubeMesh.Shutdown();
         shadowMap.Shutdown();
         planeMesh.Shutdown();

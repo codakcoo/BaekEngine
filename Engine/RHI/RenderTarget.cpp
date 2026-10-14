@@ -4,21 +4,42 @@ namespace baek
 {
 	void RenderTarget::Init(ID3D12Device* device, 
 							DescriptorHeap* rtvHeap, DescriptorHeap* dsvHeap, DescriptorHeap* srvHeap, 
-							DXGI_FORMAT format, const float clearColor[4], bool widthDepth)
+							DXGI_FORMAT format, const float clearColor[4], bool widthDepth, DeferredReleaseQueue* release)
 	{
-		mDevice = device; mRtvHeap = rtvHeap; mDsvHeap = dsvHeap; mSrvHeap = srvHeap; mFormat = format; mHasDepth = widthDepth;
+		mDevice = device; mRtvHeap = rtvHeap; mDsvHeap = dsvHeap; mSrvHeap = srvHeap; mFormat = format; mHasDepth = widthDepth;	mRelease = release;
 		memcpy(mClear, clearColor, sizeof(mClear));
-		mRtv = mRtvHeap->Allocate();					// 디스크립터는 한 번만 할당하고 재사용
-		if(mHasDepth) mDsv = mDsvHeap->Allocate();
-		mSrv = mSrvHeap->Allocate();
+		// 리소스와 디스크립터는 Resize에서 생성
+	}
+
+	void RenderTarget::Retire()
+	{
+		// RTV / DSV: CPU 전용 힙이라 즉시 해제해도 안전
+		if (mRtv.cpu.ptr) { mRtvHeap->Free(mRtv); mRtv = {}; }
+		if (mDsv.cpu.ptr) { mDsvHeap->Free(mDsv); mDsv = {}; }
+
+		// 리소스와 SRV: GPU가 다 쓴 뒤에 해제
+		mRelease->Release(std::move(mTex));
+		mRelease->Release(std::move(mDepth));
+		if (mSrv.cpu.ptr)
+		{
+			DescriptorHeap* heap = mSrvHeap;
+			DescriptorHandle srv = mSrv;
+			mRelease->Defer([heap, srv]() mutable { heap->Free(srv); });
+			mSrv = {};
+		}
 	}
 
 	void RenderTarget::Resize(UINT w, UINT h)
 	{
-		if (w == 0 || h == 0 || (w == mWidth && h == mHeight)) return;
+		if (w == 0 || h == 0 || (mTex && w == mWidth && h == mHeight)) return;
+
+		Retire();
 		mWidth = w; mHeight = h;
-		mTex.Reset();
-		mDepth.Reset();
+
+		// 새 디스크립터 슬롯
+		mRtv = mRtvHeap->Allocate();
+		mSrv = mSrvHeap->Allocate();
+		if (mHasDepth) mDsv = mDsvHeap->Allocate();
 
 		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(mFormat, w, h, 1, 1);
 		desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
@@ -28,32 +49,34 @@ namespace baek
 
 		ThrowIfFailed(mDevice->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
 		&desc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &cv, IID_PPV_ARGS(&mTex)));
-
-		auto ddesc = CD3DX12_RESOURCE_DESC::Tex2D(DepthFormat, w, h, 1, 1);
-		ddesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-		D3D12_CLEAR_VALUE dcv{};
-		dcv.Format = DepthFormat;
-		dcv.DepthStencil.Depth = 1.0f;
-
-		if (mHasDepth)
-		{
-			ThrowIfFailed(mDevice->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
-				&ddesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &dcv, IID_PPV_ARGS(&mDepth)));
-			mDepth->SetName(L"ViewportDepth");
-			mDevice->CreateDepthStencilView(mDepth.Get(), nullptr, mDsv.cpu);
-		}
-
+		mTex->SetName(L"RenderTarget");
+		
 		mDevice->CreateRenderTargetView(mTex.Get(), nullptr, mRtv.cpu);
 		mDevice->CreateShaderResourceView(mTex.Get(), nullptr, mSrv.cpu);
+
+		// 깊이
+		if (mHasDepth)
+		{
+			auto ddesc = CD3DX12_RESOURCE_DESC::Tex2D(DepthFormat, w, h, 1, 1);
+			ddesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+			D3D12_CLEAR_VALUE dcv{};
+			dcv.Format = DepthFormat;
+			dcv.DepthStencil.Depth = 1.0f;
+
+			ThrowIfFailed(mDevice->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
+				&ddesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &dcv, IID_PPV_ARGS(&mDepth)));
+			mDepth->SetName(L"RenderTargetDepth");
+			mDevice->CreateDepthStencilView(mDepth.Get(), nullptr, mDsv.cpu);
+		}
 	}
 	
 	void RenderTarget::Shutdown()
 	{
 		mTex.Reset();
 		mDepth.Reset();
-		if (mRtvHeap) mRtvHeap->Free(mRtv);
-		if (mDsvHeap && mHasDepth) mDsvHeap->Free(mDsv);
-		if (mSrvHeap) mSrvHeap->Free(mSrv);
+		if (mRtv.cpu.ptr) { mRtvHeap->Free(mRtv); mRtv = {}; }
+		if (mDsv.cpu.ptr) { mDsvHeap->Free(mDsv); mDsv = {}; }
+		if (mSrv.cpu.ptr) { mSrvHeap->Free(mSrv); mSrv = {}; }
 	}
 
 	void RenderTarget::Begin(ID3D12GraphicsCommandList* cmd)
@@ -78,4 +101,5 @@ namespace baek
 			D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 		cmd->ResourceBarrier(1, &b);
 	}
+
 }
