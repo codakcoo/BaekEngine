@@ -83,27 +83,31 @@ namespace baek
 		if (mSrv.cpu.ptr) { mSrvHeap->Free(mSrv); mSrv = {}; }
 	}
 
-	void RenderTarget::Begin(ID3D12GraphicsCommandList* cmd)
+	void RenderTarget::Begin(ID3D12GraphicsCommandList* cmd)			// 그래프 밖에서 슬 때용으로 유지
 	{
 		// 컬러와 깊이 전환을 한 번에 (깊이가 없으면 자동으로 건너뜀)
 		BarrierBatch(cmd).Transition(mColor, D3D12_RESOURCE_STATE_RENDER_TARGET);
 		BarrierBatch(cmd).Transition(mDepth, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-		/*auto b = CD3DX12_RESOURCE_BARRIER::Transition(mTex.Get(), 
-			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-		cmd->ResourceBarrier(1, &b);*/
-
-		cmd->OMSetRenderTargets(1, &mRtv.cpu, FALSE, mHasDepth ? &mDsv.cpu : nullptr);
-		cmd->ClearRenderTargetView(mRtv.cpu, mClear, 0, nullptr);
-		if(mHasDepth) cmd->ClearDepthStencilView(mDsv.cpu, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
-		D3D12_VIEWPORT vp{ 0,0,(float)mWidth,(float)mHeight,0,1 };
-		D3D12_RECT sc{ 0, 0, (LONG)mWidth,(LONG)mHeight };
-		cmd->RSSetViewports(1, &vp);
-		cmd->RSSetScissorRects(1, &sc);
+		Bind(cmd, true);
 	}
 
 	void RenderTarget::End(ID3D12GraphicsCommandList* cmd)
 	{
 		Transition(cmd, mColor, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	}
+
+	void RenderTarget::Bind(ID3D12GraphicsCommandList* cmd, bool clear)
+	{
+		cmd->OMSetRenderTargets(1, &mRtv.cpu, FALSE, mHasDepth ? &mDsv.cpu : nullptr);
+		if (clear)
+		{
+			cmd->ClearRenderTargetView(mRtv.cpu, mClear, 0, nullptr);
+			if(mHasDepth) cmd->ClearDepthStencilView(mDsv.cpu, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0 ,0, nullptr);
+		}
+
+		D3D12_VIEWPORT vp{ 0, 0, (float)mWidth, (float)mHeight, 0, 1 };
+		D3D12_RECT sc{ 0, 0, (LONG)mWidth, (LONG)mHeight };
+		cmd->RSSetViewports(1, &vp);
+		cmd->RSSetScissorRects(1, &sc);
 	}
 }

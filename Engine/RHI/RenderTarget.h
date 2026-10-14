@@ -16,12 +16,14 @@ namespace baek
 
 		void Begin(ID3D12GraphicsCommandList* cmd);				// PSR -> RT, Clear, 바인딩
 		void End(ID3D12GraphicsCommandList* cmd);				// RT -> PSR
+		void Bind(ID3D12GraphicsCommandList* cmd, bool clear);
 
 		D3D12_GPU_DESCRIPTOR_HANDLE Srv() const { return mSrv.gpu; }
 		UINT Width() const { return mWidth; }
 		UINT Height() const { return mHeight; }
 
 		GpuResource& Color() { return mColor; }			// 다른 패스가 직접 상태를 바꿀 수 있게
+		GpuResource& Depth() { return mDepth; }
 
 	protected:
 		void Retire();

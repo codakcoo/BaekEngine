@@ -11,6 +11,7 @@
 #include "Renderer\SkyPass.h"
 #include "Renderer\IBL.h"
 #include "Renderer\ShadowMap.h"
+#include "Renderer\FrameGraph.h"
 #include "Scene/Scene.h"
 #include "Asset\Model.h"
 #include "imgui.h"
@@ -26,6 +27,7 @@ baek::Renderer renderer;
 baek::RenderTarget sceneRT;             // HDR: 씬을 그리는 곳
 baek::RenderTarget viewportRT;          // LDR: 톤매핑 결과, ImGui가 표시 (기존 변수)
 baek::ShadowMap shadowMap;
+baek::FrameGraph gGraph;
 
 
 UINT vpReqW = 1200, vpReqH = 720;       // UI가 요청한 크기
@@ -207,7 +209,12 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scen
     ImGui::Text("Cam : %.2f, %.2f, %.2f", p.x, p.y, p.z);
     auto& rq = renderer.ReleaseQueue();
     ImGui::Text("Release : %zu pending / %zu peak / %zu total", rq.Pending(), rq.Peak(), rq.TotalReleased());
+    ImGui::SeparatorText("Frame Graph");
+    for(const auto& s : gGraph.Stats())
+        ImGui::Text("%-8s barriers: %u", s.name.c_str(), s.barriers);
+
     ImGui::Separator();
+    // evironment setting
     ImGui::Checkbox("ImGui Demo", &showDemo);
     ImGui::SeparatorText("Directional Light");
     ImGui::DragFloat3("Direction", &scene.light.direction.x, 0.01f, -1.0f, 1.0f);
@@ -442,23 +449,48 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
             renderer.BeginFrame(clear);
 			auto* cmd = renderer.CommandList();
-            
+            const UINT fi = renderer.FrameIndex();
             camera.SetAspect((float)viewportRT.Width() / (float)viewportRT.Height());
 
+            using U = baek::ResourceUse;
+            gGraph.Reset();
+
             // 그림자(씬보다 먼저)
-            sceneRenderer.RenderShadowPass(cmd, renderer.FrameIndex(), camera, scene, shadowMap);
+            gGraph.AddPass("Shadow",
+                { U::Dsv(shadowMap.Resource()) },
+                [&](ID3D12GraphicsCommandList* c) 
+                { 
+                    sceneRenderer.RenderShadowPass(c, fi, camera, scene, shadowMap); 
+                });
 
             // 1) 씬 -> HDR
-            sceneRT.Begin(cmd);
-            sceneRenderer.Render(cmd, renderer.FrameIndex(), camera, scene);
-            sky.Render(cmd, renderer.SrvHeap().Get(), ibl.EnvCubeSrv(), camera, gSkyIntensity);
-            sceneRT.End(cmd);
-            //  sceneRT.End(cmd);                   // 중복 전환 테스트(예전 방식이면 이전 상태 불일치로 인해 error가 발생하지만 동일한 상태에서는 기존을 그대로 가져와 다를 경우에만 상태전환을 하기 때문에 오류가 없어야 정상)
+            gGraph.AddPass("Scene",
+                { U::Srv(shadowMap.Resource()), U::Rtv(sceneRT.Color()), U::Dsv(sceneRT.Depth()) },
+                [&](ID3D12GraphicsCommandList* c) 
+                { 
+                    sceneRT.Bind(c, true);
+                    sceneRenderer.Render(c, fi, camera, scene); 
+                });
+
+            gGraph.AddPass("Sky",
+                { U::Rtv(sceneRT.Color()), U::Dsv(sceneRT.Depth()) },
+                [&](ID3D12GraphicsCommandList* c)
+                {
+                    sceneRT.Bind(c, false);                 // 씬 위에 이어 그림: Clear 안 함
+                    sky.Render(c, renderer.SrvHeap().Get(), ibl.EnvCubeSrv(), camera, gSkyIntensity);
+                });
 
             // 2) HDR -> 톤매핑 -> LDR
-			viewportRT.Begin(cmd);
-            tonemap.Render(cmd, renderer.SrvHeap().Get(), sceneRT.Srv(), gExposure);
-			viewportRT.End(cmd);
+            gGraph.AddPass("Tonemap",
+                { U::Srv(sceneRT.Color()), U::Rtv(viewportRT.Color()) },
+                [&](ID3D12GraphicsCommandList* c)
+                {
+                    viewportRT.Bind(c, true);
+                    tonemap.Render(c, renderer.SrvHeap().Get(), sceneRT.Srv(), gExposure);
+                });
+
+			gGraph.Export(viewportRT.Color(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);      // ImGui가 읽음
+            gGraph.Execute(cmd);
 
 			renderer.BindBackBuffer();                 // 스왑체인 RT로 전환
             imgui.EndFrame(cmd);

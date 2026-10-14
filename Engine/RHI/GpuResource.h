@@ -52,6 +52,7 @@ namespace baek
 			if(mCount == kMax) Flush();
 			mBarriers[mCount++] = CD3DX12_RESOURCE_BARRIER::Transition(r.mRes.Get(), r.mState, target);
 			r.mState = target;
+			++mIssued;
 			return *this;
 		}
 
@@ -60,6 +61,7 @@ namespace baek
 			if (!r.mRes) return *this;
 			if (mCount == kMax) Flush();
 			mBarriers[mCount++] = CD3DX12_RESOURCE_BARRIER::UAV(r.mRes.Get());
+			++mIssued;
 			return *this;
 		}
 
@@ -68,6 +70,7 @@ namespace baek
 			if(mCount) { mCmd->ResourceBarrier(mCount, mBarriers); mCount = 0; }
 		}
 
+		UINT Issued() const { return mIssued; }
 
 	private:
 		// 읽기 상태끼리는 OR로 합칠 수 있음.
@@ -86,6 +89,7 @@ namespace baek
 		D3D12_RESOURCE_BARRIER mBarriers[kMax]{};
 		UINT mCount = 0;
 		ID3D12GraphicsCommandList* mCmd;
+		UINT mIssued = 0;
 	};
 
 	inline void Transition(ID3D12GraphicsCommandList* cmd, GpuResource& r, D3D12_RESOURCE_STATES target)

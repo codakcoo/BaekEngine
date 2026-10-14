@@ -19,6 +19,7 @@ namespace baek
 
 		D3D12_GPU_DESCRIPTOR_HANDLE Srv() const { return mSrv.gpu; }
 		UINT Size() const { return mSize; }
+		GpuResource& Resource() { return mTex; }
 
 	private:
 		GpuResource mTex;				// ComPtr 대체
