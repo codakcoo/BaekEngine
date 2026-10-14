@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "RHI/DxUtil.h"
 #include "RHI/DescriptorHeap.h"
+#include "RHI/GpuResource.h"
 #include <string>
 #include <cstdint>
 
@@ -34,7 +35,7 @@ namespace baek
 
 	// Propertys
 	private:
-		ComPtr<ID3D12Resource> mTex;
+		GpuResource mRes;			// mTex 대체
 		DescriptorHeap* mSrvHeap = nullptr;
 		DescriptorHandle mSrv{};
 		UINT mWidth = 0, mHeight = 0;

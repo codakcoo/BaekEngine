@@ -453,6 +453,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             sceneRenderer.Render(cmd, renderer.FrameIndex(), camera, scene);
             sky.Render(cmd, renderer.SrvHeap().Get(), ibl.EnvCubeSrv(), camera, gSkyIntensity);
             sceneRT.End(cmd);
+            //  sceneRT.End(cmd);                   // 중복 전환 테스트(예전 방식이면 이전 상태 불일치로 인해 error가 발생하지만 동일한 상태에서는 기존을 그대로 가져와 다를 경우에만 상태전환을 하기 때문에 오류가 없어야 정상)
 
             // 2) HDR -> 톤매핑 -> LDR
 			viewportRT.Begin(cmd);

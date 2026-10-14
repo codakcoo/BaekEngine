@@ -18,8 +18,8 @@ namespace baek
 		if (mDsv.cpu.ptr) { mDsvHeap->Free(mDsv); mDsv = {}; }
 
 		// 리소스와 SRV: GPU가 다 쓴 뒤에 해제
-		mRelease->Release(std::move(mTex));
-		mRelease->Release(std::move(mDepth));
+		mRelease->Release(std::move(mColor.Detach()));
+		mRelease->Release(std::move(mDepth.Detach()));
 		if (mSrv.cpu.ptr)
 		{
 			DescriptorHeap* heap = mSrvHeap;
@@ -31,7 +31,7 @@ namespace baek
 
 	void RenderTarget::Resize(UINT w, UINT h)
 	{
-		if (w == 0 || h == 0 || (mTex && w == mWidth && h == mHeight)) return;
+		if (w == 0 || h == 0 || (mColor && w == mWidth && h == mHeight)) return;
 
 		Retire();
 		mWidth = w; mHeight = h;
@@ -47,12 +47,14 @@ namespace baek
 		D3D12_CLEAR_VALUE cv{ mFormat, { mClear[0], mClear[1], mClear[2], mClear[3] } };
 		CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
 
+		ComPtr<ID3D12Resource> tex;
 		ThrowIfFailed(mDevice->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
-		&desc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &cv, IID_PPV_ARGS(&mTex)));
-		mTex->SetName(L"RenderTarget");
+		&desc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &cv, IID_PPV_ARGS(&tex)));
+		tex->SetName(L"RenderTarget");
+		mColor.Attach(tex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);					// 생성 시 상태를 그대로 기록
 		
-		mDevice->CreateRenderTargetView(mTex.Get(), nullptr, mRtv.cpu);
-		mDevice->CreateShaderResourceView(mTex.Get(), nullptr, mSrv.cpu);
+		mDevice->CreateRenderTargetView(mColor.Get(), nullptr, mRtv.cpu);
+		mDevice->CreateShaderResourceView(mColor.Get(), nullptr, mSrv.cpu);
 
 		// 깊이
 		if (mHasDepth)
@@ -63,16 +65,18 @@ namespace baek
 			dcv.Format = DepthFormat;
 			dcv.DepthStencil.Depth = 1.0f;
 
+			ComPtr<ID3D12Resource> depth;
 			ThrowIfFailed(mDevice->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
-				&ddesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &dcv, IID_PPV_ARGS(&mDepth)));
-			mDepth->SetName(L"RenderTargetDepth");
+				&ddesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &dcv, IID_PPV_ARGS(&depth)));
+			depth->SetName(L"RenderTargetDepth");
+			mDepth.Attach(depth, D3D12_RESOURCE_STATE_DEPTH_WRITE);
 			mDevice->CreateDepthStencilView(mDepth.Get(), nullptr, mDsv.cpu);
 		}
 	}
 	
 	void RenderTarget::Shutdown()
 	{
-		mTex.Reset();
+		mColor.Reset();
 		mDepth.Reset();
 		if (mRtv.cpu.ptr) { mRtvHeap->Free(mRtv); mRtv = {}; }
 		if (mDsv.cpu.ptr) { mDsvHeap->Free(mDsv); mDsv = {}; }
@@ -81,9 +85,12 @@ namespace baek
 
 	void RenderTarget::Begin(ID3D12GraphicsCommandList* cmd)
 	{
-		auto b = CD3DX12_RESOURCE_BARRIER::Transition(mTex.Get(), 
+		// 컬러와 깊이 전환을 한 번에 (깊이가 없으면 자동으로 건너뜀)
+		BarrierBatch(cmd).Transition(mColor, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		BarrierBatch(cmd).Transition(mDepth, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+		/*auto b = CD3DX12_RESOURCE_BARRIER::Transition(mTex.Get(), 
 			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-		cmd->ResourceBarrier(1, &b);
+		cmd->ResourceBarrier(1, &b);*/
 
 		cmd->OMSetRenderTargets(1, &mRtv.cpu, FALSE, mHasDepth ? &mDsv.cpu : nullptr);
 		cmd->ClearRenderTargetView(mRtv.cpu, mClear, 0, nullptr);
@@ -97,9 +104,6 @@ namespace baek
 
 	void RenderTarget::End(ID3D12GraphicsCommandList* cmd)
 	{
-		auto b = CD3DX12_RESOURCE_BARRIER::Transition(mTex.Get(),
-			D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-		cmd->ResourceBarrier(1, &b);
+		Transition(cmd, mColor, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	}
-
 }

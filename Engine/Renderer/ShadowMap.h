@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "RHI/DxUtil.h"
 #include "RHI/DescriptorHeap.h"
+#include "RHI/GpuResource.h"
 
 namespace baek
 {
@@ -20,7 +21,7 @@ namespace baek
 		UINT Size() const { return mSize; }
 
 	private:
-		ComPtr<ID3D12Resource> mTex;
+		GpuResource mTex;				// ComPtr 대체
 		DescriptorHeap* mDsvHeap = nullptr;
 		DescriptorHeap* mSrvHeap = nullptr;
 		DescriptorHandle mDsv[kCascades]{}, mSrv{};

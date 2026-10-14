@@ -147,7 +147,7 @@ namespace baek
 
 	void Texture::Shutdown()
 	{
-		mTex.Reset();
+		mRes.Reset();
 		if(mSrvHeap) mSrvHeap->Free(mSrv);
 		mSrvHeap = nullptr;
 	}
@@ -164,8 +164,10 @@ namespace baek
 
 		// 1) 최종 텍스처 (DEFAULT 힙, 복사 대상 상태로 시작)
 		CD3DX12_HEAP_PROPERTIES defaultHeap(D3D12_HEAP_TYPE_DEFAULT);
+		ComPtr<ID3D12Resource> tex;
 		ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &desc,
-			D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&mTex)));
+			D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&tex)));
+		mRes.Attach(tex, D3D12_RESOURCE_STATE_COPY_DEST);
 
 		// 2) 모든 밉 레벨의 배치 정보를 한 번에 조회
 		std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> fps{ mipCount };
@@ -197,20 +199,18 @@ namespace baek
 			{
 				for (UINT m = 0; m < mipCount; ++m)
 				{
-					CD3DX12_TEXTURE_COPY_LOCATION dstLoc(mTex.Get(), m);				// 서브리소스 인덱스 = 밉레벨
+					CD3DX12_TEXTURE_COPY_LOCATION dstLoc(mRes.Get(), m);				// 서브리소스 인덱스 = 밉레벨
 					CD3DX12_TEXTURE_COPY_LOCATION srvLoc(upload.Get(), fps[m]);
 					cmd->CopyTextureRegion(&dstLoc, 0, 0, 0, &srvLoc, nullptr);
 				}
 
 				// 컴퓨트 셰이더가 읽기 위해서 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE 추가
-				auto b = CD3DX12_RESOURCE_BARRIER::Transition(mTex.Get(),
-					D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);		
-				cmd->ResourceBarrier(1, &b);
+				Transition(cmd, mRes, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 			});
 
 		// 5) SRV (desc를 nullptr로 주면 모든 밉 레벨을 포함)
 		mSrvHeap = &renderer.SrvHeap();
 		mSrv = mSrvHeap->Allocate();
-		device->CreateShaderResourceView(mTex.Get(), nullptr, mSrv.cpu);
+		device->CreateShaderResourceView(mRes.Get(), nullptr, mSrv.cpu);
 	}
 }

@@ -14,9 +14,12 @@ namespace baek
 		clear.Format = DsvFormat;
 		clear.DepthStencil.Depth = 1.0f;
 
+		ComPtr<ID3D12Resource> tex;
 		CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
-		ThrowIfFailed(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clear, IID_PPV_ARGS(&mTex)));
-		mTex->SetName(L"ShadowMap_Cascades");
+		ThrowIfFailed(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clear, IID_PPV_ARGS(&tex)));
+		tex->SetName(L"ShadowMap_Cascades");
+		mTex.Attach(tex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		// 이후 뷰 생성은 mTex.Get() 사용
 
 		// 쓰기: 장마다 DSV 하나
 		for (UINT c = 0; c < kCascades; ++c)
@@ -43,9 +46,7 @@ namespace baek
 
 	void ShadowMap::Begin(ID3D12GraphicsCommandList* cmd)
 	{
-		auto b = CD3DX12_RESOURCE_BARRIER::Transition(mTex.Get(),
-			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-		cmd->ResourceBarrier(1, &b);
+		Transition(cmd, mTex, D3D12_RESOURCE_STATE_DEPTH_WRITE);
 
 		D3D12_VIEWPORT vp{ 0, 0, (float)mSize, (float)mSize, 0, 1 };
 		D3D12_RECT sc{ 0, 0, (LONG)mSize, (LONG)mSize };
@@ -55,16 +56,13 @@ namespace baek
 
 	void ShadowMap::BeginCascade(ID3D12GraphicsCommandList* cmd, UINT cascade)
 	{
-
 		cmd->OMSetRenderTargets(0, nullptr, FALSE, &mDsv[cascade].cpu);		// 컬러 타깃 없음, 깊이만
 		cmd->ClearDepthStencilView(mDsv[cascade].cpu, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 	}
 
 	void ShadowMap::End(ID3D12GraphicsCommandList* cmd)
 	{
-		auto b = CD3DX12_RESOURCE_BARRIER::Transition(mTex.Get(),
-			D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-		cmd->ResourceBarrier(1, &b);
+		Transition(cmd, mTex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	}
 	void ShadowMap::Shutdown()
 	{

@@ -2,6 +2,7 @@
 #include "RHI/DxUtil.h"
 #include "RHI/DescriptorHeap.h"
 #include "RHI/DeferredRelease.h"
+#include "RHI/GpuResource.h"
 
 namespace baek
 {
@@ -20,6 +21,7 @@ namespace baek
 		UINT Width() const { return mWidth; }
 		UINT Height() const { return mHeight; }
 
+		GpuResource& Color() { return mColor; }			// 다른 패스가 직접 상태를 바꿀 수 있게
 
 	protected:
 		void Retire();
@@ -34,8 +36,8 @@ namespace baek
 		DescriptorHeap* mDsvHeap = nullptr;
 		DescriptorHeap* mSrvHeap = nullptr;
 
-		ComPtr<ID3D12Resource> mTex;
-		ComPtr<ID3D12Resource> mDepth;
+		GpuResource mColor;					// mTex대체
+		GpuResource mDepth;					// mDepth 대체
 		DescriptorHandle mRtv{}, mSrv{}, mDsv{};
 		DXGI_FORMAT mFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 		UINT mWidth = 0, mHeight = 0;
@@ -44,5 +46,6 @@ namespace baek
 		bool mHasDepth = true;
 
 		DeferredReleaseQueue* mRelease = nullptr;
+
 	};
 }
