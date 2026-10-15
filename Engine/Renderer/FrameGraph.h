@@ -11,11 +11,12 @@ namespace baek
 	{
 		GpuResource* res;
 		D3D12_RESOURCE_STATES state;
+		UINT sub = GpuResource::kAll;
 
-		static ResourceUse Srv(GpuResource& r) { return { &r, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE }; }
-		static ResourceUse Rtv(GpuResource& r) { return { &r, D3D12_RESOURCE_STATE_RENDER_TARGET }; }
-		static ResourceUse Dsv(GpuResource& r) { return { &r, D3D12_RESOURCE_STATE_DEPTH_WRITE }; }
-		static ResourceUse Uav(GpuResource& r) { return { &r, D3D12_RESOURCE_STATE_UNORDERED_ACCESS }; }
+		static ResourceUse Srv(GpuResource& r, UINT sub = GpuResource::kAll) { return { &r, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, sub }; }
+		static ResourceUse Rtv(GpuResource& r, UINT sub = GpuResource::kAll) { return { &r, D3D12_RESOURCE_STATE_RENDER_TARGET, sub }; }
+		static ResourceUse Dsv(GpuResource& r, UINT sub = GpuResource::kAll) { return { &r, D3D12_RESOURCE_STATE_DEPTH_WRITE, sub }; }
+		static ResourceUse Uav(GpuResource& r, UINT sub = GpuResource::kAll) { return { &r, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, sub }; }
 	};
 
 	class FrameGraph
@@ -32,7 +33,10 @@ namespace baek
 		void AddPass(std::string name, std::vector<ResourceUse> uses, ExecFn exec);
 
 		// 그래프 밖(ImGui 등)에서 쓸 리소스의 최종 상태
-		void Export(GpuResource& r, D3D12_RESOURCE_STATES state) { mExports.push_back({ &r, state }); }
+		void Export(GpuResource& r, D3D12_RESOURCE_STATES state, UINT sub = GpuResource::kAll) 
+		{ 
+			mExports.push_back({ &r, state, sub }); 
+		}
 		void Execute(ID3D12GraphicsCommandList* cmd);
 		const std::vector<PassStat>& Stats() const { return mStats; }			// 직전 Execute 결과
 

@@ -7,7 +7,9 @@ namespace baek
 	{
 	public:
 		void Init(ID3D12Device* device, DXGI_FORMAT outputFormat);
-		void Render(ID3D12GraphicsCommandList* cmd, ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR_HANDLE sceneSrv, float exposure);
+		void Render(ID3D12GraphicsCommandList* cmd, ID3D12DescriptorHeap* heap,
+			D3D12_GPU_DESCRIPTOR_HANDLE hdrSrv, D3D12_GPU_DESCRIPTOR_HANDLE bloomSrv,
+			float exposure, float bloomIntensity);
 		void Shutdown();
 
 	private:

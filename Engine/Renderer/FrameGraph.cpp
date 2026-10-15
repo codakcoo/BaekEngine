@@ -19,7 +19,9 @@ namespace baek
 		{
 			for (size_t j = i + 1; j < uses.size(); ++j)
 			{
-				assert(!(uses[i].res == uses[j].res && uses[i].state != uses[j].state) && "FrameGraph: conflicting states for the same resource in one pass");
+				const auto& a = uses[i];
+				const auto& b = uses[j];
+				assert(!(a.res == b.res && a.state != b.state) && "FrameGraph: conflicting states for the same resource in one pass");
 			}
 		}
 #endif
@@ -36,7 +38,7 @@ namespace baek
 			{
 				BarrierBatch batch(cmd);
 				for (const ResourceUse& u : p.uses)
-					batch.Transition(*u.res, u.state);
+					batch.Transition(*u.res, u.state, u.sub);
 				issued = batch.Issued();
 			}											// 여기서 Flush (패스 실행 전에 한 번에 제출)
 
@@ -49,6 +51,6 @@ namespace baek
 
 		BarrierBatch batch(cmd);
 		for(const ResourceUse& u : mExports)
-			batch.Transition(*u.res, u.state);
+			batch.Transition(*u.res, u.state, u.sub);
 	}
 }

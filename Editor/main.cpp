@@ -12,6 +12,7 @@
 #include "Renderer\IBL.h"
 #include "Renderer\ShadowMap.h"
 #include "Renderer\FrameGraph.h"
+#include "Renderer\BloomPass.h"
 #include "Scene/Scene.h"
 #include "Asset\Model.h"
 #include "imgui.h"
@@ -28,7 +29,7 @@ baek::RenderTarget sceneRT;             // HDR: 씬을 그리는 곳
 baek::RenderTarget viewportRT;          // LDR: 톤매핑 결과, ImGui가 표시 (기존 변수)
 baek::ShadowMap shadowMap;
 baek::FrameGraph gGraph;
-
+static baek::BloomSettings gBloom;
 
 UINT vpReqW = 1200, vpReqH = 720;       // UI가 요청한 크기
 static int gSelected = -1;                  // 선택된 엔티티 인덱스 (-1 = 없음)
@@ -213,6 +214,14 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scen
     for(const auto& s : gGraph.Stats())
         ImGui::Text("%-8s barriers: %u", s.name.c_str(), s.barriers);
 
+    // Bloom
+    ImGui::SeparatorText("Bloom");
+    ImGui::Checkbox("Enable Bloom", &gBloom.enabled);
+    ImGui::SliderFloat("Threshold", &gBloom.threshold, 0.0f, 5.0f);
+    ImGui::SliderFloat("Knee", &gBloom.knee, 0.0f, 1.0f);
+    ImGui::SliderFloat("Radius", &gBloom.radius, 0.5f, 3.0f);
+    ImGui::SliderFloat("Bloom Intensity", &gBloom.intensity, 0.0f, 2.0f);
+
     ImGui::Separator();
     // evironment setting
     ImGui::Checkbox("ImGui Demo", &showDemo);
@@ -276,6 +285,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         sceneRT.Init(device, &renderer.RtvHeap(), &renderer.DsvHeap(), &renderer.SrvHeap(),
                      DXGI_FORMAT_R16G16B16A16_FLOAT, sceneClear, true, &renderer.ReleaseQueue());
         sceneRT.Resize(vpReqW, vpReqH);
+
+        baek::BloomPass bloom;
+        bloom.Init(renderer);
+        bloom.Resize(sceneRT.Width(), sceneRT.Height());
 
         const float black[4] = { 0, 0, 0, 1 };
         viewportRT.Init(device, &renderer.RtvHeap(), &renderer.DsvHeap(), &renderer.SrvHeap(),
@@ -480,13 +493,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                     sky.Render(c, renderer.SrvHeap().Get(), ibl.EnvCubeSrv(), camera, gSkyIntensity);
                 });
 
+            if(gBloom.enabled)
+                bloom.AddPasses(gGraph, sceneRT.Color(), sceneRT.Srv(), gBloom);
+
             // 2) HDR -> 톤매핑 -> LDR
             gGraph.AddPass("Tonemap",
-                { U::Srv(sceneRT.Color()), U::Rtv(viewportRT.Color()) },
+                { U::Srv(sceneRT.Color()), U::Srv(bloom.Output(), 0), U::Rtv(viewportRT.Color()) },
                 [&](ID3D12GraphicsCommandList* c)
                 {
                     viewportRT.Bind(c, true);
-                    tonemap.Render(c, renderer.SrvHeap().Get(), sceneRT.Srv(), gExposure);
+                    tonemap.Render(c, renderer.SrvHeap().Get(), sceneRT.Srv(), bloom.OutputSrv(),
+                        gExposure, gBloom.enabled ? gBloom.intensity : 0.0f);
                 });
 
 			gGraph.Export(viewportRT.Color(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);      // ImGui가 읽음
@@ -510,6 +527,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         brick.Shutdown();
         helmet.Shutdown();
         sceneRenderer.Shutdown();
+        bloom.Shutdown();
         sceneRT.Shutdown();
         viewportRT.Shutdown();
         tonemap.Shutdown();

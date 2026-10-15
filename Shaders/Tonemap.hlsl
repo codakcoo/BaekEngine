@@ -1,10 +1,12 @@
-Texture2D       gScene : register(t0);
+Texture2D       gHdr : register(t0);
+Texture2D       gBloom : register(t1);
 SamplerState    gSampler : register(s0);
 
 cbuffer Params : register(b0)
 {
     float gExposure;
-    float3 _pad;
+    float gBloomIntensity;
+    float2 _pad;
 };
 
 struct VSOut
@@ -30,7 +32,9 @@ float3 ACESFilm(float3 x)
 
 float4 PSMain(VSOut i) : SV_Target
 {
-    float3 hdr = gScene.Sample(gSampler, i.uv).rgb * gExposure;
+    // 노출과 ACES를 적용하기 전에 더함
+    float3 hdr = gHdr.Sample(gSampler, i.uv).rgb * gExposure;
+    hdr += gBloom.SampleLevel(gSampler, i.uv, 0).rgb * gBloomIntensity;
     float3 ldr = ACESFilm(hdr);
     return float4(pow(ldr, 1.0f / 2.2f), 1.0f);         // linear -> displat gamma
 }

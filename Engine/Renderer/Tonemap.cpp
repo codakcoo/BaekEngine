@@ -8,16 +8,18 @@ namespace baek
 		// t0 = scene texture (desciptor table), b0 = params (root constants), s0 = static sampler
 		CD3DX12_DESCRIPTOR_RANGE range;
 		range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+		CD3DX12_DESCRIPTOR_RANGE bloomRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1); // t1
 
-		CD3DX12_ROOT_PARAMETER params[2];
+		CD3DX12_ROOT_PARAMETER params[3];
 		params[0].InitAsDescriptorTable(1, &range, D3D12_SHADER_VISIBILITY_PIXEL);
 		params[1].InitAsConstants(4, 0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
+		params[2].InitAsDescriptorTable(1, &bloomRange, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR,
 			D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, 
 			D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
 
-		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(2, params, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(3, params, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
 		ComPtr<ID3DBlob> sig, err;
 		HRESULT hr = D3D12SerializeRootSignature(&rsDesc, D3D_ROOT_SIGNATURE_VERSION_1, sig.GetAddressOf(), err.GetAddressOf());
@@ -48,17 +50,20 @@ namespace baek
 		ThrowIfFailed(device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&mPso)));
 	}
 
-	void TonemapPass::Render(ID3D12GraphicsCommandList* cmd, ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR_HANDLE sceneSrv, float exposure)
+	void TonemapPass::Render(ID3D12GraphicsCommandList* cmd, ID3D12DescriptorHeap* heap, 
+		D3D12_GPU_DESCRIPTOR_HANDLE hdrSrv, D3D12_GPU_DESCRIPTOR_HANDLE bloomSrv, 
+		float exposure, float bloomIntensity)
 	{
-		ID3D12DescriptorHeap* heaps[] = { srvHeap };
+		ID3D12DescriptorHeap* heaps[] = { heap };
 		cmd->SetDescriptorHeaps(1, heaps);
 
 		cmd->SetGraphicsRootSignature(mRootSig.Get());
 		cmd->SetPipelineState(mPso.Get());
-		cmd->SetGraphicsRootDescriptorTable(0, sceneSrv);
+		cmd->SetGraphicsRootDescriptorTable(0, hdrSrv);
 
 		const float params[4] = { exposure, 0.0f, 0.0f, 0.0f };
 		cmd->SetGraphicsRoot32BitConstants(1, 4, params, 0);
+		cmd->SetGraphicsRootDescriptorTable(2, bloomSrv);
 
 		cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		cmd->DrawInstanced(3, 1, 0, 0);

@@ -49,9 +49,9 @@ namespace baek
 
 		ComPtr<ID3D12Resource> tex;
 		ThrowIfFailed(mDevice->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
-		&desc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &cv, IID_PPV_ARGS(&tex)));
+		&desc, kShaderReadState, &cv, IID_PPV_ARGS(&tex)));
 		tex->SetName(L"RenderTarget");
-		mColor.Attach(tex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);					// 생성 시 상태를 그대로 기록
+		mColor.Attach(tex, kShaderReadState);					// 생성 시 상태를 그대로 기록
 		
 		mDevice->CreateRenderTargetView(mColor.Get(), nullptr, mRtv.cpu);
 		mDevice->CreateShaderResourceView(mColor.Get(), nullptr, mSrv.cpu);
@@ -93,7 +93,7 @@ namespace baek
 
 	void RenderTarget::End(ID3D12GraphicsCommandList* cmd)
 	{
-		Transition(cmd, mColor, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		Transition(cmd, mColor, kShaderReadState);
 	}
 
 	void RenderTarget::Bind(ID3D12GraphicsCommandList* cmd, bool clear)
