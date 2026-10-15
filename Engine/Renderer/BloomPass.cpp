@@ -81,17 +81,18 @@ namespace baek
 		g.AddPass("Bloom Prefilter", { U::Srv(scene), U::Uav(mDown, 0) },
 			[this, sceneSrv, s](ID3D12GraphicsCommandList* c)
 			{
-				Dispatch(c, mPrefilterPso.Get(), sceneSrv, sceneSrv, mDownUav[0].gpu, mSrcW, mSrcH, MipW(0), MipH(0), s);
+				Dispatch(c, mPrefilterPso.Get(), sceneSrv, sceneSrv, mDownUav[0].gpu,
+					mSrcW, mSrcH, MipW(0), MipH(0), s);
 			});
 
 		// 2) Down[i-1] -> Down[i]
-		for (UINT i = 0; i < N; ++i)
+		for (UINT i = 1; i < N; ++i)
 		{
-			g.AddPass("Bloom Down" + std::to_string(i), {U::Srv(mDown, i - 1), U::Uav(mDown, i)},
+			g.AddPass("Bloom Down " + std::to_string(i), { U::Srv(mDown, i - 1), U::Uav(mDown, i) },
 				[this, i, s](ID3D12GraphicsCommandList* c)
 				{
-					Dispatch(c, mDownPso.Get(), mDownSrv[i-1].gpu, mDownSrv[i - 1].gpu, mDownUav[i].gpu,
-						MipW(i-1), MipH(i-1), MipW(i), MipH(i), s);
+					Dispatch(c, mDownPso.Get(), mDownSrv[i - 1].gpu, mDownSrv[i - 1].gpu, mDownUav[i].gpu,
+						MipW(i - 1), MipH(i - 1), MipW(i), MipH(i), s);
 				});
 		}
 
@@ -101,10 +102,11 @@ namespace baek
 			const bool first = (i == N - 1);
 			GpuResource& low = first ? mDown : mUp;
 			const D3D12_GPU_DESCRIPTOR_HANDLE lowSrv = first ? mDownSrv[i].gpu : mUpSrv[i].gpu;
-			g.AddPass("Bloom Up" + std::to_string(i-1), { U::Srv(low, i), U::Uav(mDown, i-1), U::Uav(mUp, i-1)},
+			g.AddPass("Bloom Up " + std::to_string(i - 1),
+				{ U::Srv(low, i), U::Srv(mDown, i - 1), U::Uav(mUp, i - 1) },
 				[this, i, lowSrv, s](ID3D12GraphicsCommandList* c)
 				{
-					Dispatch(c, mUpPso.Get(), lowSrv, mDownSrv[i - 1].gpu, mUpUav[i].gpu,
+					Dispatch(c, mUpPso.Get(), lowSrv, mDownSrv[i - 1].gpu, mUpUav[i - 1].gpu,
 						MipW(i), MipH(i), MipW(i - 1), MipH(i - 1), s);
 				});
 		}

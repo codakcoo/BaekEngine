@@ -13,6 +13,12 @@ namespace baek
 	class GpuResource
 	{
 	public:
+		GpuResource() = default;
+		GpuResource(const GpuResource&) = delete;
+		GpuResource& operator=(const GpuResource&) = delete;
+		GpuResource(GpuResource&&) = default;
+		GpuResource& operator=(GpuResource&&) = default;
+
 		static constexpr UINT kAll = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 
 		void Attach(ComPtr<ID3D12Resource> res, D3D12_RESOURCE_STATES initial)
@@ -40,7 +46,7 @@ namespace baek
 		explicit operator bool() const { return mRes != nullptr; }
 		D3D12_RESOURCE_STATES State(UINT sub = 0) const { return mStates[sub]; }
 
-	protected:
+	private:
 		friend class BarrierBatch;
 		ComPtr<ID3D12Resource> mRes;
 		std::vector<D3D12_RESOURCE_STATES> mStates;
@@ -87,7 +93,7 @@ namespace baek
 	private:
 		void Push(GpuResource& r, UINT sub, D3D12_RESOURCE_STATES target)
 		{
-			D3D12_RESOURCE_STATES cur = r.mStates[sub == GpuResource::kAll ? 0 : sub];
+			D3D12_RESOURCE_STATES& cur = r.mStates[sub == GpuResource::kAll ? 0 : sub];
 			if(IsSatisfied(cur, target)) return;
 			if(mCount == kMax) Flush();
 			mBarriers[mCount++] = CD3DX12_RESOURCE_BARRIER::Transition(r.mRes.Get(), cur, target, sub);

@@ -32,9 +32,12 @@ float3 ACESFilm(float3 x)
 
 float4 PSMain(VSOut i) : SV_Target
 {
-    // ³ëÃâ°ú ACES¸¦ Àû¿ëÇÏ±â Àü¿¡ ´õÇÔ
+    // ë…¸ì¶œê³¼ ACESë¥¼ ì ìš©í•˜ê¸° ì „ì— ë”í•¨
     float3 hdr = gHdr.Sample(gSampler, i.uv).rgb * gExposure;
-    hdr += gBloom.SampleLevel(gSampler, i.uv, 0).rgb * gBloomIntensity;
+    //hdr += gBloom.SampleLevel(gSampler, i.uv, 0).rgb * gBloomIntensity;
+    float3 bloom = gBloom.SampleLevel(gSampler, i.uv, 0).rgb;
+    bloom = any(isnan(bloom)) ? 0.0f : bloom;
+    hdr += bloom * gBloomIntensity;
     float3 ldr = ACESFilm(hdr);
     return float4(pow(ldr, 1.0f / 2.2f), 1.0f);         // linear -> displat gamma
 }

@@ -61,7 +61,7 @@ namespace baek
 		cmd->SetPipelineState(mPso.Get());
 		cmd->SetGraphicsRootDescriptorTable(0, hdrSrv);
 
-		const float params[4] = { exposure, 0.0f, 0.0f, 0.0f };
+		const float params[4] = { exposure, bloomIntensity, 0.0f, 0.0f };
 		cmd->SetGraphicsRoot32BitConstants(1, 4, params, 0);
 		cmd->SetGraphicsRootDescriptorTable(2, bloomSrv);
 

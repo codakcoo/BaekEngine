@@ -14,16 +14,21 @@ namespace baek
 	void FrameGraph::AddPass(std::string name, std::vector<ResourceUse> uses, ExecFn exec)
 	{
 #if defined(_DEBUG)
-		// 한 패스 안에서 같은 리소스를 서로 다른 상태로 요구하면 모순
 		for (size_t i = 0; i < uses.size(); ++i)
-		{
 			for (size_t j = i + 1; j < uses.size(); ++j)
 			{
-				const auto& a = uses[i];
-				const auto& b = uses[j];
-				assert(!(a.res == b.res && a.state != b.state) && "FrameGraph: conflicting states for the same resource in one pass");
+				const ResourceUse& a = uses[i];
+				const ResourceUse& b = uses[j];
+				const bool overlap = a.sub == b.sub || a.sub == GpuResource::kAll || b.sub == GpuResource::kAll;
+				if (a.res == b.res && overlap && a.state != b.state)
+				{
+					char msg[256];
+					sprintf_s(msg, "FrameGraph conflict in pass '%s': use[%zu] sub=%d state=0x%X vs use[%zu] sub=%d state=0x%X\n",
+						name.c_str(), i, (int)a.sub, a.state, j, (int)b.sub, b.state);
+					OutputDebugStringA(msg);
+					assert(false && "FrameGraph: conflicting states for the same subresource in one pass");
+				}
 			}
-		}
 #endif
 		mPasses.push_back({std::move(name), std::move(uses), std::move(exec)});
 	}

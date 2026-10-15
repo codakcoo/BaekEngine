@@ -21,11 +21,13 @@ float Luma(float3 c)
 
 float3 Tap(float2 uv, float2 offset)
 {
-	return gSrc.SampleLevel(gLinear, uv + offset * gSrvTexel, 0).rgb;
+	float3 c = gSrc.SampleLevel(gLinear, uv + offset * gSrvTexel, 0).rgb;
+	c = any(isnan(c)) ? 0.0f : c;
+	return min(c, 65000.0f);
 }
 
 // 13-tap downsample = 5 overlapping 2x2 boxes (center 0.5, corners 0.125 each)
-void Boxes13(float2 uv, float3 boxes[5])
+void Boxes13(float2 uv, out float3 boxes[5])
 {
 	float3 a = Tap(uv, float2(-2, -2)), b = Tap(uv, float2(0, -2)), c = Tap(uv, float2(2, -2));
 	float3 d = Tap(uv, float2(-1, -1)), e = Tap(uv, float2(1, -1));

@@ -13,7 +13,7 @@ namespace baek
 		D3D12_RESOURCE_STATES state;
 		UINT sub = GpuResource::kAll;
 
-		static ResourceUse Srv(GpuResource& r, UINT sub = GpuResource::kAll) { return { &r, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, sub }; }
+		static ResourceUse Srv(GpuResource& r, UINT sub = GpuResource::kAll) { return { &r, kShaderReadState, sub }; }
 		static ResourceUse Rtv(GpuResource& r, UINT sub = GpuResource::kAll) { return { &r, D3D12_RESOURCE_STATE_RENDER_TARGET, sub }; }
 		static ResourceUse Dsv(GpuResource& r, UINT sub = GpuResource::kAll) { return { &r, D3D12_RESOURCE_STATE_DEPTH_WRITE, sub }; }
 		static ResourceUse Uav(GpuResource& r, UINT sub = GpuResource::kAll) { return { &r, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, sub }; }

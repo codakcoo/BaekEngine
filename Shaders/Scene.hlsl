@@ -117,9 +117,9 @@ float3 F_SchilckRoughness(float NdotV, float3 F0, float roughness)
 // 1 = lit, 0 = fully in shadow
 float ShadowFactor(float3 worldPos, float3 Ng, out uint cascade)
 {
+    cascade = 0;
     // Pick the cascade by distance along the camera's forward axis
     float viewDepth = dot(worldPos - gCameraPos, gCameraForward);
-    cascade = 0;
     [unroll]
     for (uint c = 0; c < 3; ++c)
     {
@@ -191,8 +191,8 @@ float4 PSLit(VSOut i) : SV_Target
     
     float D = D_GGX(NdotH, roughness);
     float G = G_Smith(NdotV, NdotL, roughness);
-    float F = F_Schlick(VdotH, F0);
-    
+    float3 F = F_Schlick(VdotH, F0);
+
     float3 specualr = (D * G * F) / max(4.0f * NdotV * NdotL, 1e-4f);
     float3 kD = (1.0f - F) * (1.0f - metallic);         // metal have no diffuse
     float3 diffuse = kD * albedo / PI;
