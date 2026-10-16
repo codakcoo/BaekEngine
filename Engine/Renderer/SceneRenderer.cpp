@@ -24,10 +24,9 @@ namespace baek
 		XMFLOAT4X4 cascadeViewProj[ShadowMap::kCascades];
 		XMFLOAT4 cascadeSplits;
 		XMFLOAT4 cascadeTexel;
-		XMFLOAT4 shadowParams;			
-		// x = bias, 
-		// y = 1 / shadow map size, 
-		// z = normal offset
+		XMFLOAT4 shadowParams;			// x = bias,  // y = 1 / shadow map size, // z = normal offset
+		XMFLOAT4X4 view;
+		XMFLOAT4 aoParams;
 	};
 
 	struct PerObjectCB
@@ -51,15 +50,15 @@ namespace baek
 		mFlatNormal.CreateFromPixels(renderer, flatNormal, 1, 1, false);
 
 		// Root Signature: b0 PerFrame, b1 PerObject, t0 albedo, t1 normal, t2 metallic-roughness, s0 sampler, s1 clamp sampler
-		CD3DX12_DESCRIPTOR_RANGE ranges[8];
-		for(UINT i = 0; i < 8; ++i)
-			ranges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, i);				// t0~t7
+		CD3DX12_DESCRIPTOR_RANGE ranges[9];
+		for(UINT i = 0; i < 9; ++i)
+			ranges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, i);				// t0~t9
 
 		// --- Root Signature: b0 = MVP (root constants 16개) ---
-		CD3DX12_ROOT_PARAMETER params[10];
+		CD3DX12_ROOT_PARAMETER params[11];
 		params[0].InitAsConstantBufferView(0);
 		params[1].InitAsConstantBufferView(1);
-		for(UINT i = 0; i < 8; ++i)
+		for(UINT i = 0; i < 9; ++i)
 			params[2+i].InitAsDescriptorTable(1, &ranges[i], D3D12_SHADER_VISIBILITY_PIXEL);
 		
 		CD3DX12_STATIC_SAMPLER_DESC samplers[3] = 
@@ -72,7 +71,7 @@ namespace baek
 				D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER,
 				0.0f, 16, D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE),
 		};
-		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(10, params, 3, samplers, 
+		CD3DX12_ROOT_SIGNATURE_DESC rsDesc(11, params, 3, samplers, 
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 		ComPtr<ID3DBlob> sig, err;
@@ -83,9 +82,10 @@ namespace baek
 		ThrowIfFailed(device->CreateRootSignature(0, sig->GetBufferPointer(), sig->GetBufferSize(), IID_PPV_ARGS(&mRootSig)));
 
 		// Shaders
-		auto vs =		CompileShader(ShaderPath(L"Scene.hlsl"), "VSMain",		"vs_5_0");
-		auto psLit =	CompileShader(ShaderPath(L"Scene.hlsl"), "PSLit",		"ps_5_0");
-		auto psUnlit =	CompileShader(ShaderPath(L"Scene.hlsl"), "PSUnlit",		"ps_5_0");
+		auto vs =				CompileShader(ShaderPath(L"Scene.hlsl"), "VSMain",		"vs_5_0");
+		auto psLit =			CompileShader(ShaderPath(L"Scene.hlsl"), "PSLit",		"ps_5_0");
+		auto psUnlit =			CompileShader(ShaderPath(L"Scene.hlsl"), "PSUnlit",		"ps_5_0");
+		auto psNormalDepth =	CompileShader(ShaderPath(L"Scene.hlsl"), "PSNormalDepth", "ps_5_0");
 
 
 		// Input layout
@@ -129,6 +129,12 @@ namespace baek
 		shadowPso.RasterizerState.SlopeScaledDepthBias = 2.0f;				// 비스듬한 면일수록 더 밀어냄
 		shadowPso.RasterizerState.DepthBiasClamp = 0.0f;
 		ThrowIfFailed(device->CreateGraphicsPipelineState(&shadowPso, IID_PPV_ARGS(&mShadowPso)));
+
+		auto dnPso = pso;
+		dnPso.PS = CD3DX12_SHADER_BYTECODE(psNormalDepth.Get());
+		dnPso.RTVFormats[0] = kNormalDepthFormat;
+		dnPso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&dnPso, IID_PPV_ARGS(&mDepthNormalPso)));
 
 		// 상수 버퍼링 (1MB씩)
 		for (auto& cb : mCB) cb.Init(device, 1024 * 1024);
@@ -186,6 +192,8 @@ namespace baek
 		pf.cascadeTexel = mCascadeTexel;
 		pf.shadowParams = { scene.light.shadowBias, mShadowTexel, scene.light.normalOffset, 
 			scene.light.showCascade ? 1.0f : 0.0f };
+		XMStoreFloat4x4(&pf.view, XMMatrixTranspose(camera.View()));
+		pf.aoParams = { mAoEnabled ? 1.0f : 0.0f, mAoShowOnly ? 1.0f : 0.0f, 0.0f, 0.0f };
 		cmd->SetGraphicsRootConstantBufferView(0, cb.Alloc(&pf, sizeof(pf)));
 
 		
@@ -212,6 +220,7 @@ namespace baek
 			cmd->SetGraphicsRootDescriptorTable(7, mPrefilteredSrv);
 			cmd->SetGraphicsRootDescriptorTable(8, mBrdfLutSrv);
 			cmd->SetGraphicsRootDescriptorTable(9, mShadowSrv);
+			cmd->SetGraphicsRootDescriptorTable(10, mAoSrv);				// t8: 한 번만 바인딩하면 유지됨
 		};
 		
 		// --- Grid ---
@@ -251,7 +260,7 @@ namespace baek
 		{
 			const float p = (float)i/N;
 			const float logSplit = nearZ * powf(farZ / nearZ, p);
-			const float uniSplit = nearZ * (farZ - nearZ) * p;
+			const float uniSplit = nearZ + (farZ - nearZ) * p; 
 			splits[i] = lambda * logSplit + (1.0f - lambda) * uniSplit;
 		}
 
@@ -341,11 +350,38 @@ namespace baek
 		shadow.End(cmd);
 	}
 
+	void SceneRenderer::RenderDepthNormal(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Camera& camera, const Scene& scene)
+	{
+		UploadRing& cb = mCB[frameIndex];
+		cmd->SetGraphicsRootSignature(mRootSig.Get());
+		cmd->SetPipelineState(mDepthNormalPso.Get());
+		cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		PerFrameCB pf{};
+		XMStoreFloat4x4(&pf.viewProj,	XMMatrixTranspose(camera.ViewProj()));
+		XMStoreFloat4x4(&pf.view,		XMMatrixTranspose(camera.View()));
+		cmd->SetGraphicsRootConstantBufferView(0, cb.Alloc(&pf, sizeof(pf)));
+
+		for (const Entity& e : scene.Entities())
+		{
+			if(!e.visible || !e.mesh) continue;
+			const XMMATRIX world = e.transform.Matrix();
+			XMMATRIX w = world;
+			w.r[3] = XMVectorSet(0, 0, 0, 1);
+
+			PerObjectCB po{};
+			XMStoreFloat4x4(&po.world, XMMatrixTranspose(world));
+			XMStoreFloat4x4(&po.worldInvTranspose, XMMatrixInverse(nullptr, w));		// (inv^T)^T = inv
+			cmd->SetGraphicsRootConstantBufferView(1, cb.Alloc(&po, sizeof(po)));
+			e.mesh->Draw(cmd);
+		}
+	}
+
 	void SceneRenderer::Shutdown()
 	{
 		for (auto& cb : mCB) cb.Shutdown();
 		mWhite.Shutdown();
 		mFlatNormal.Shutdown();
-		mPso.Reset(); mLinePSO.Reset(); mRootSig.Reset();
+		mPso.Reset(); mLinePSO.Reset(); mShadowPso.Reset(); mDepthNormalPso.Reset(); mRootSig.Reset();
 	}
 }

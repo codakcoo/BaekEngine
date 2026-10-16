@@ -1,5 +1,5 @@
 static const float PI = 3.14159265f;
-static const float kPrefilterMaxLod = 4.0f;         // = prefilterMips - 1 (c++ ÂÊ°ú ¸ÂÃâ °Í)
+static const float kPrefilterMaxLod = 4.0f;         // = prefilterMips - 1 (c++ ï¿½Ê°ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½)
 
 static const float3 kCascadeColors[5] =
 {
@@ -16,6 +16,7 @@ TextureCube             gIrradianceMap  : register(t4);
 TextureCube             gPrefilterMap   : register(t5);
 Texture2D               gBrdfLut        : register(t6);
 Texture2DArray          gShadowMap      : register(t7);
+Texture2D               gAoMap          : register(t8);
 SamplerState            gSampler        : register(s0);
 SamplerState            gClampSampler   : register(s1);
 SamplerComparisonState  gShadowSampler : register(s2);
@@ -31,6 +32,8 @@ cbuffer PerFrame : register(b0)
     float4 gCascadeSplits;      // far distance of each cascade
     float4 gCascadeTexel;       // world size of one shadow texel per cascade
     float4 gShadowParams;       // x = bias, y = texel size, z = normal offset
+    float4x4 gView;             // world -> view
+    float4 gAoParams;           // x = enabled, y = show AO only
 };
 
 cbuffer PerObject : register(b1)
@@ -159,6 +162,14 @@ float ShadowFactor(float3 worldPos, float3 Ng, out uint cascade)
     return sum / 9.0f;
 }
 
+// DepthNormal prepass: view-space normal + linear view depth (0 = nothing / sky)
+float4 PSNormalDepth(VSOut i) : SV_Target
+{
+    float3 nV = normalize(mul(normalize(i.normal), (float3x3) gView));
+    float viewZ = mul(float4(i.worldPos, 1.0f), gView).z;
+    return float4(nV, viewZ);
+}
+
 float4 PSLit(VSOut i) : SV_Target
 {
     float3 albedo = i.color * gAlbedoMap.Sample(gSampler, i.uv).rgb;
@@ -172,7 +183,7 @@ float4 PSLit(VSOut i) : SV_Target
     float3 T = normalize(i.tangent.xyz - N * dot(N, i.tangent.xyz));        // re-orthogonalize
     float3 B = cross(N, T) * i.tangent.w;
     
-    float3 Ng = normalize(i.normal);                                        // ³ë¸Ö ¸Ê Àû¿ë Àü, Áö¿À¸ÞÆ®¸® ³ë¸Ö (¸Ç ¾Õ¿¡¼­ ÀúÀå)
+    float3 Ng = normalize(i.normal);                                        // ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½, ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ®ï¿½ï¿½ ï¿½ï¿½ï¿½ (ï¿½ï¿½ ï¿½Õ¿ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½)
     
     float3 nTS = gNormalMap.Sample(gSampler, i.uv).xyz * 2.0f - 1.0f;       // [0,1] -> [-1,1]
     N = normalize(nTS.x * T + nTS.y * B + nTS.z * N);
@@ -199,7 +210,7 @@ float4 PSLit(VSOut i) : SV_Target
     
     uint cascade;
     float shadow = ShadowFactor(i.worldPos, Ng, cascade);
-    float3 direct = (diffuse + specualr) * gLightColor * NdotL * shadow;            // Á÷Á¢±¤¿¡¸¸ Àû¿ë
+    float3 direct = (diffuse + specualr) * gLightColor * NdotL * shadow;            // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
     
     // Image-based lighting
     float3 ks_amb = F_SchilckRoughness(NdotV, F0, roughness);
@@ -215,10 +226,13 @@ float4 PSLit(VSOut i) : SV_Target
     float2 brdf = gBrdfLut.SampleLevel(gClampSampler, float2(NdotV, roughness), 0).rg;
     float3 specularIBL = prefiltered * (ks_amb * brdf.x + brdf.y);
     
-    float3 ambient = (diffuseIBL + specularIBL) * gAmbient;
+    float ao = (gAoParams.x > 0.5f) ? gAoMap.Load(int3(i.pos.xy, 0)).r : 1.0f;          // ê°™ì€ í•´ìƒë„ë¼ í”½ì…€ ì¢Œí‘œ ê·¸ëŒ€ë¡œ
+    float3 ambient = (diffuseIBL + specularIBL) * gAmbient * ao;
     float3 emissive = gEmissive.rgb * gEmissiveMap.Sample(gSampler, i.uv).rgb;
     
     float3 color = direct + ambient + emissive;
+    if (gAoParams.y > 0.5f)
+        return float4(ao.xxx, 1.0f);                    // debug: AO only
     if(gShadowParams.w > 0.5f)
         color *= kCascadeColors[cascade];               // debug: tint by cascade
     return float4(color, 1.0f);

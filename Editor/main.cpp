@@ -13,6 +13,7 @@
 #include "Renderer\ShadowMap.h"
 #include "Renderer\FrameGraph.h"
 #include "Renderer\BloomPass.h"
+#include "Renderer\SsaoPass.h"
 #include "Scene/Scene.h"
 #include "Asset\Model.h"
 #include "imgui.h"
@@ -29,6 +30,7 @@ baek::RenderTarget sceneRT;             // HDR: 씬을 그리는 곳
 baek::RenderTarget viewportRT;          // LDR: 톤매핑 결과, ImGui가 표시 (기존 변수)
 baek::ShadowMap shadowMap;
 baek::FrameGraph gGraph;
+baek::SsaoSettings gSsao;
 static baek::BloomSettings gBloom;
 
 UINT vpReqW = 1200, vpReqH = 720;       // UI가 요청한 크기
@@ -222,6 +224,14 @@ static void DrawEditorUI(bool& showDemo, baek::Camera& camera, baek::Scene& scen
     ImGui::SliderFloat("Radius", &gBloom.radius, 0.5f, 3.0f);
     ImGui::SliderFloat("Bloom Intensity", &gBloom.intensity, 0.0f, 2.0f);
 
+    // Ssao
+    ImGui::SeparatorText("SSAO");
+    ImGui::Checkbox("Enable SSAO", &gSsao.enabled);
+    ImGui::Checkbox("Show AO", &gSsao.showAO);
+    ImGui::SliderFloat("AO Radius", &gSsao.radius, 0.05f, 2.0f);
+    ImGui::SliderFloat("AO Bias", &gSsao.bias, 0.0f, 0.1f, "%.3f");
+    ImGui::SliderFloat("AO Power", &gSsao.power, 0.5f, 4.0f);
+
     ImGui::Separator();
     // evironment setting
     ImGui::Checkbox("ImGui Demo", &showDemo);
@@ -286,6 +296,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                      DXGI_FORMAT_R16G16B16A16_FLOAT, sceneClear, true, &renderer.ReleaseQueue());
         sceneRT.Resize(vpReqW, vpReqH);
 
+        baek::RenderTarget normalRT;
+        const float zero[4] = { 0, 0, 0, 0 };                          // w = 0 → 하늘
+        normalRT.Init(device, &renderer.RtvHeap(), &renderer.DsvHeap(), &renderer.SrvHeap(),
+            baek::SceneRenderer::kNormalDepthFormat, zero, true, &renderer.ReleaseQueue());
+        normalRT.Resize(vpReqW, vpReqH);
+
+        baek::SsaoPass ssao;
+        ssao.Init(renderer);
+        ssao.Resize(vpReqW, vpReqH);
+
         baek::BloomPass bloom;
         bloom.Init(renderer);
         bloom.Resize(sceneRT.Width(), sceneRT.Height());
@@ -312,6 +332,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         sky.Init(device, DXGI_FORMAT_R16G16B16A16_FLOAT, baek::RenderTarget::DepthFormat);
 
         shadowMap.Init(device, &renderer.DsvHeap(), &renderer.SrvHeap(), 2048);
+
+
 
         baek::Texture checker;                  // 체커보드 텍스처 (256x256, 32픽셀 칸)
         {
@@ -454,6 +476,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             {
                 sceneRT.Resize(vpReqW, vpReqH);
                 viewportRT.Resize(vpReqW, vpReqH);          // 크기 변경
+                sceneRT.Resize(vpReqW, vpReqH);
+                viewportRT.Resize(vpReqW, vpReqH);
+                normalRT.Resize(vpReqW, vpReqH);
+                ssao.Resize(vpReqW, vpReqH);
+                bloom.Resize(vpReqW, vpReqH);
 			}
 
             imgui.BeginFrame();
@@ -476,9 +503,21 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                     sceneRenderer.RenderShadowPass(c, fi, camera, scene, shadowMap); 
                 });
 
+            if (gSsao.enabled)
+            {
+                gGraph.AddPass("DepthNormal", { U::Rtv(normalRT.Color()), U::Dsv(normalRT.Depth()) },
+                    [&](ID3D12GraphicsCommandList* c)
+                    {
+                        normalRT.Bind(c, true);
+                        sceneRenderer.RenderDepthNormal(c, fi, camera, scene);
+                    });
+                ssao.AddPasses(gGraph, normalRT.Color(), normalRT.Srv(), camera, gSsao);
+            }
+            sceneRenderer.SetAO(ssao.OutputSrv(), gSsao.enabled, gSsao.enabled && gSsao.showAO);
+
             // 1) 씬 -> HDR
             gGraph.AddPass("Scene",
-                { U::Srv(shadowMap.Resource()), U::Rtv(sceneRT.Color()), U::Dsv(sceneRT.Depth()) },
+                { U::Srv(shadowMap.Resource()), U::Srv(ssao.Output()), U::Rtv(sceneRT.Color()), U::Dsv(sceneRT.Depth()) },
                 [&](ID3D12GraphicsCommandList* c) 
                 { 
                     sceneRT.Bind(c, true);
@@ -515,12 +554,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         }
 
         renderer.WaitIdle();                        // GPU가 ImGui 리소스를 다 쓴 뒤에
-        renderer.ReleaseQueue().Flush();
         cubeMesh.Shutdown();
         shadowMap.Shutdown();
         planeMesh.Shutdown();
         sky.Shutdown();
         ibl.Shutdown();
+        ssao.Shutdown();
+        normalRT.Shutdown();
         envMap.Shutdown();
         sphereMesh.Shutdown();
         checker.Shutdown();
@@ -531,6 +571,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         sceneRT.Shutdown();
         viewportRT.Shutdown();
         tonemap.Shutdown();
+        renderer.ReleaseQueue().Flush();
         imgui.Shutdown();                           // ImGui 해제
         renderer.Shutdown();
     }

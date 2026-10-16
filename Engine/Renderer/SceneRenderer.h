@@ -19,10 +19,16 @@ namespace baek
 		void Render(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Camera& camera, const Scene& scene);
 		// 매 프레임 Render보다 먼저 호출(상수 버퍼 링을 여기서 비움)
 		void RenderShadowPass(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Camera& camera, const Scene& scene, ShadowMap& shadow);
+		void RenderDepthNormal(ID3D12GraphicsCommandList* cmd, UINT frameIndex, const Camera& camera, const Scene& scene);
 		void Shutdown();
 		
 		void SetIBL(D3D12_GPU_DESCRIPTOR_HANDLE irradiance, D3D12_GPU_DESCRIPTOR_HANDLE prefiltered, D3D12_GPU_DESCRIPTOR_HANDLE brdfLut) 
 		{ mIrradianceSrv = irradiance; mPrefilteredSrv = prefiltered; mBrdfLutSrv = brdfLut; }
+		void SetAO(D3D12_GPU_DESCRIPTOR_HANDLE srv, bool enabled, bool showOnly)
+		{ mAoSrv = srv, mAoEnabled = enabled; mAoShowOnly = showOnly; }
+
+		static constexpr DXGI_FORMAT kNormalDepthFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
+
 	private:
 		ComPtr<ID3D12RootSignature> mRootSig;
 		ComPtr<ID3D12PipelineState> mPso;
@@ -42,6 +48,11 @@ namespace baek
 		DirectX::XMFLOAT4 mCascadeTexel{};						// 구간별 텍셀 하나의 월드 크기
 		D3D12_GPU_DESCRIPTOR_HANDLE mShadowSrv{};
 		float mShadowTexel = 0.0f;
+
+		// AO
+		ComPtr<ID3D12PipelineState> mDepthNormalPso;
+		D3D12_GPU_DESCRIPTOR_HANDLE mAoSrv{};
+		bool mAoEnabled = false, mAoShowOnly = false;
 
 		Texture mWhite;								// 텍스처가 없는 엔티티용 1x1 흰색 (albedo / metallic-roughness 기본값)
 		Texture mFlatNormal;						// normal 기본값

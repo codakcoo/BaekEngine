@@ -21,9 +21,8 @@ float Luma(float3 c)
 
 float3 Tap(float2 uv, float2 offset)
 {
-	float3 c = gSrc.SampleLevel(gLinear, uv + offset * gSrvTexel, 0).rgb;
-	c = any(isnan(c)) ? 0.0f : c;
-	return min(c, 65000.0f);
+    float3 c = gSrc.SampleLevel(gLinear, uv + offset * gSrvTexel, 0).rgb;
+    return min(max(c, 0.0f), 65000.0f); // NaN -> 0, inf -> 65000, 음수 -> 0
 }
 
 // 13-tap downsample = 5 overlapping 2x2 boxes (center 0.5, corners 0.125 each)
