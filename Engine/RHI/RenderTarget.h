@@ -16,8 +16,10 @@ namespace baek
 
 		void Begin(ID3D12GraphicsCommandList* cmd);				// PSR -> RT, Clear, 바인딩
 		void End(ID3D12GraphicsCommandList* cmd);				// RT -> PSR
-		void Bind(ID3D12GraphicsCommandList* cmd, bool clear);
+		void Bind(ID3D12GraphicsCommandList* cmd, bool clearColor, bool clearDepth = true);
+		void BindWithDepth(ID3D12GraphicsCommandList* cmd, bool clearColor, D3D12_CPU_DESCRIPTOR_HANDLE dsv, bool clearDepth);
 
+		D3D12_CPU_DESCRIPTOR_HANDLE DsvCpu() const { return mDsv.cpu; }
 		D3D12_GPU_DESCRIPTOR_HANDLE Srv() const { return mSrv.gpu; }
 		UINT Width() const { return mWidth; }
 		UINT Height() const { return mHeight; }

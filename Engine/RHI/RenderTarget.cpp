@@ -96,14 +96,18 @@ namespace baek
 		Transition(cmd, mColor, kShaderReadState);
 	}
 
-	void RenderTarget::Bind(ID3D12GraphicsCommandList* cmd, bool clear)
+	void RenderTarget::Bind(ID3D12GraphicsCommandList* cmd, bool clearColor, bool clearDepth)
 	{
-		cmd->OMSetRenderTargets(1, &mRtv.cpu, FALSE, mHasDepth ? &mDsv.cpu : nullptr);
-		if (clear)
-		{
+		BindWithDepth(cmd, clearColor, mHasDepth ? mDsv.cpu : D3D12_CPU_DESCRIPTOR_HANDLE{}, clearDepth);
+	}
+
+	void RenderTarget::BindWithDepth(ID3D12GraphicsCommandList* cmd, bool clearColor, D3D12_CPU_DESCRIPTOR_HANDLE dsv, bool clearDepth)
+	{
+		cmd->OMSetRenderTargets(1, &mRtv.cpu, FALSE, dsv.ptr ? &dsv : nullptr);
+		if (clearColor)
 			cmd->ClearRenderTargetView(mRtv.cpu, mClear, 0, nullptr);
-			if(mHasDepth) cmd->ClearDepthStencilView(mDsv.cpu, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0 ,0, nullptr);
-		}
+		if (clearDepth && dsv.ptr)
+			cmd->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 		D3D12_VIEWPORT vp{ 0, 0, (float)mWidth, (float)mHeight, 0, 1 };
 		D3D12_RECT sc{ 0, 0, (LONG)mWidth, (LONG)mHeight };

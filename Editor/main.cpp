@@ -299,7 +299,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         baek::RenderTarget normalRT;
         const float zero[4] = { 0, 0, 0, 0 };                          // w = 0 → 하늘
         normalRT.Init(device, &renderer.RtvHeap(), &renderer.DsvHeap(), &renderer.SrvHeap(),
-            baek::SceneRenderer::kNormalDepthFormat, zero, true, &renderer.ReleaseQueue());
+            baek::SceneRenderer::kNormalDepthFormat, zero, false, &renderer.ReleaseQueue());
         normalRT.Resize(vpReqW, vpReqH);
 
         baek::SsaoPass ssao;
@@ -476,8 +476,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             {
                 sceneRT.Resize(vpReqW, vpReqH);
                 viewportRT.Resize(vpReqW, vpReqH);          // 크기 변경
-                sceneRT.Resize(vpReqW, vpReqH);
-                viewportRT.Resize(vpReqW, vpReqH);
                 normalRT.Resize(vpReqW, vpReqH);
                 ssao.Resize(vpReqW, vpReqH);
                 bloom.Resize(vpReqW, vpReqH);
@@ -503,16 +501,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                     sceneRenderer.RenderShadowPass(c, fi, camera, scene, shadowMap); 
                 });
 
+            gGraph.AddPass("DepthPrepass", { U::Rtv(normalRT.Color()), U::Dsv(sceneRT.Depth()) },
+            [&](ID3D12GraphicsCommandList* c)
+                {
+                    normalRT.BindWithDepth(c, true, sceneRT.DsvCpu(), true);
+                    sceneRenderer.RenderDepthNormal(c, fi, camera, scene);
+                });
+
             if (gSsao.enabled)
-            {
-                gGraph.AddPass("DepthNormal", { U::Rtv(normalRT.Color()), U::Dsv(normalRT.Depth()) },
-                    [&](ID3D12GraphicsCommandList* c)
-                    {
-                        normalRT.Bind(c, true);
-                        sceneRenderer.RenderDepthNormal(c, fi, camera, scene);
-                    });
-                ssao.AddPasses(gGraph, normalRT.Color(), normalRT.Srv(), camera, gSsao);
-            }
+               ssao.AddPasses(gGraph, normalRT.Color(), normalRT.Srv(), camera, gSsao);   
             sceneRenderer.SetAO(ssao.OutputSrv(), gSsao.enabled, gSsao.enabled && gSsao.showAO);
 
             // 1) 씬 -> HDR
@@ -520,7 +517,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                 { U::Srv(shadowMap.Resource()), U::Srv(ssao.Output()), U::Rtv(sceneRT.Color()), U::Dsv(sceneRT.Depth()) },
                 [&](ID3D12GraphicsCommandList* c) 
                 { 
-                    sceneRT.Bind(c, true);
+                    sceneRT.Bind(c, true, false);
                     sceneRenderer.Render(c, fi, camera, scene); 
                 });
 
@@ -528,7 +525,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                 { U::Rtv(sceneRT.Color()), U::Dsv(sceneRT.Depth()) },
                 [&](ID3D12GraphicsCommandList* c)
                 {
-                    sceneRT.Bind(c, false);                 // 씬 위에 이어 그림: Clear 안 함
+                    sceneRT.Bind(c, false, false);                 // 씬 위에 이어 그림: Clear 안 함
                     sky.Render(c, renderer.SrvHeap().Get(), ibl.EnvCubeSrv(), camera, gSkyIntensity);
                 });
 

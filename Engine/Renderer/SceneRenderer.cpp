@@ -113,11 +113,18 @@ namespace baek
 		pso.RTVFormats[0] = rtvFormat;
 		pso.DSVFormat = dsvFormat;
 		pso.SampleDesc.Count = 1;
-		ThrowIfFailed(device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&mPso)));
+		
+		auto litPso = pso;
+		litPso.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_EQUAL;			// 프리패슷와 같은 깊이인 픽셀만
+		litPso.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;		// 깊이는 프리패스가 이미 기록
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&litPso, IID_PPV_ARGS(&mPso)));
+		
+		//ThrowIfFailed(device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&mPso)));
 
 		auto linePSO = pso;
 		linePSO.PS = CD3DX12_SHADER_BYTECODE(psUnlit.Get());				// 그리드용
 		linePSO.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+		linePSO.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
 		ThrowIfFailed(device->CreateGraphicsPipelineState(&linePSO, IID_PPV_ARGS(&mLinePSO)));
 
 		auto shadowPso = pso;
@@ -222,13 +229,6 @@ namespace baek
 			cmd->SetGraphicsRootDescriptorTable(9, mShadowSrv);
 			cmd->SetGraphicsRootDescriptorTable(10, mAoSrv);				// t8: 한 번만 바인딩하면 유지됨
 		};
-		
-		// --- Grid ---
-		setObject(XMMatrixIdentity(), mDefaultMaterial);				// grid
-		cmd->SetPipelineState(mLinePSO.Get());
-		cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
-		cmd->IASetVertexBuffers(0, 1, &mGridVbv);
-		cmd->DrawInstanced(mGridVertexCount, 1, 0, 0);
 
 		// --- Entities ---
 		cmd->SetPipelineState(mPso.Get());
@@ -239,6 +239,13 @@ namespace baek
 			//cmd->SetGraphicsRootDescriptorTable(2, (e.albedoMap ? e.albedoMap : &mWhite)->Srv());
 			e.mesh->Draw(cmd);
 		}
+
+		// --- Grid ---
+		setObject(XMMatrixIdentity(), mDefaultMaterial);				// grid
+		cmd->SetPipelineState(mLinePSO.Get());
+		cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
+		cmd->IASetVertexBuffers(0, 1, &mGridVbv);
+		cmd->DrawInstanced(mGridVertexCount, 1, 0, 0);
 	}
 	
 	
